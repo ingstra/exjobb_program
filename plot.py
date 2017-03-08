@@ -2,18 +2,21 @@ from __future__ import division
 
 import matplotlib.pylab as plt
 import numpy as np
-import sys
+#import sys
 
 # input file
-filename = 'testfil'
 
-data = np.loadtxt(filename)
+#trace = np.loadtxt('trace.dat')
+
+traj = np.loadtxt('vacuum_decay_1000traj.dat')
+
 
 #plt.hist(data)
+plt.plot(traj[:,0],traj[:,1])
+#plt.plot(trace[:,0],trace[:,1])
 
-plt.plot(data[:,0],data[:,1])
 
-#plt.plot(data[:,0],np.exp(-2*data[:,0]),'y--')
+plt.plot(traj[:,0],np.exp(-traj[:,0]),'r--')
 
 
 
@@ -42,7 +45,7 @@ def p_plus(t):
     return (1 - np.exp(-3*gamma*t/4)*np.cos(Omega*t))/2
 
 
-plt.plot(data[:,0],avg_Z(data[:,0]),'r--')
+#plt.plot(data[:,0],avg_Z(data[:,0]),'r--')
 
 #plt.plot(data[:,0],p_plus(data[:,0]),'g')
 

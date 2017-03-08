@@ -36,7 +36,7 @@ contains
 
   pure function trace(matrix)
     complex(dp), intent(in) :: matrix(:,:)
-    complex(dp) :: trace
+    real(dp) :: trace
     integer :: n 
     n = size(matrix,1)
     trace = 0
@@ -46,7 +46,7 @@ contains
     enddo
   end function trace
 
-  pure function superH(r,rho)
+   function superH(r,rho)
 
     complex(dp), intent(in) :: r(:,:), rho(:,:)
     complex(dp), allocatable ::superH(:,:) 
@@ -56,7 +56,7 @@ contains
 
     allocate(superH(n,n))
 
-    superH = matmul(r,rho) + matmul(rho,dagger(r)) - trace( matmul(r,rho) + matmul(rho,dagger(r)) )*identity_matrix(n)
+    superH = matmul(r,rho) + matmul(rho,dagger(r)) - trace( matmul(r,rho) + matmul(rho,dagger(r)) )*rho
 
   end function superH
 
@@ -64,13 +64,20 @@ contains
 
     complex(dp), intent(in) :: r(:,:), rho(:,:)
     complex(dp), allocatable ::superG(:,:) 
+    real(dp) :: tracevalue
 
     integer :: n
     n=size(r,1)
 
     allocate(superG(n,n))
 
-    superG = matmul(matmul(r,rho),dagger(r))/trace( matmul(matmul(r,rho),dagger(r)) ) - rho
+    tracevalue = real( trace( matmul(matmul(r,rho),dagger(r)) ) )
+
+    if (tracevalue /= 0) then
+       superG = matmul(matmul(r,rho),dagger(r))/tracevalue - rho
+    else
+       superG = 0!- rho
+    end if
 
   end function superG
 
@@ -98,9 +105,10 @@ contains
     identity_matrix = tmp
   end function identity_matrix
 
-  pure function delta_rho(rho,H,c,cdagger,delta_t,dN)
+   function delta_rho(rho,H,c,cdagger,delta_t,dN)
     complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:), cdagger(:,:)
-    real(dp), intent(in) :: dN, delta_t
+    real(dp), intent(in) :: delta_t
+    integer, intent(in) :: dN
     complex(dp), allocatable ::delta_rho(:,:) 
 
     complex(dp) :: i 
