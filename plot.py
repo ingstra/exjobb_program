@@ -1,27 +1,52 @@
 from __future__ import division
 
 import matplotlib.pylab as plt
+import matplotlib.mlab as mlab
 import numpy as np
+from scipy.stats import norm
+
 #import sys
-
-# input file
-
 #trace = np.loadtxt('trace.dat')
 
-traj = np.loadtxt('vacuum_decay_1000traj.dat')
+traj = np.loadtxt('traj.dat')
+exact = np.loadtxt('exact.dat')
+current = np.loadtxt('current.dat')
+#data = np.loadtxt('tst.dat')
+
+dt = 1e-3
+nruns = 1000
+
+mu = 0
+variance = dt*nruns
+sigma = np.sqrt(variance)
+
+#plt.hist(current,50)
+
+#mufit, stdfit = norm.fit(current)
+#print 'calculated mean: ',mu,'fitted mean: ',mufit
+#print 'calculated std: ',sigma,'fitted std: ',stdfit
 
 
-#plt.hist(data)
 plt.plot(traj[:,0],traj[:,1])
+plt.plot(exact[:,0],exact[:,1],'r--')
+
+
+
+#x = mu + sigma*np.random.randn(1000)
+#n, bins, patches = plt.hist(x, 50, facecolor='green', alpha=0.75)
+#y = mlab.normpdf( bins, mu, sigma)
+#l = plt.plot(bins, y, 'r--')
+
+
 #plt.plot(trace[:,0],trace[:,1])
 
 
-plt.plot(traj[:,0],np.exp(-traj[:,0]),'r--')
+#plt.plot(traj[:,0],np.exp(-traj[:,0]),'r--')
 
 
 
 def avg_Z(t):
-    Omega = 5
+    Omega = 1
     gamma = 1
     
     if 4*Omega < gamma:
@@ -44,8 +69,7 @@ def p_plus(t):
     gamma = 1
     return (1 - np.exp(-3*gamma*t/4)*np.cos(Omega*t))/2
 
-
-#plt.plot(data[:,0],avg_Z(data[:,0]),'r--')
+#plt.plot(traj[:,0],avg_Z(traj[:,0]),'r--')
 
 #plt.plot(data[:,0],p_plus(data[:,0]),'g')
 

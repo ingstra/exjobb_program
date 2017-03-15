@@ -33,6 +33,135 @@ contains
 
   end subroutine print_matrix
 
+subroutine direct_detection(nruns,ntrajs,dt,rhozero,c,cdagger,filename,H)
+  integer, intent(in) :: nruns, ntrajs
+  real(dp), intent(in) :: dt
+  complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
+  character(len=*), intent(in) :: filename
+
+  real(dp), allocatable :: store(:)
+  integer, allocatable :: seed(:)
+  integer :: k, j, dN, values(8)
+  complex(dp) :: rho(2,2)
+  allocate(store(nruns))
+
+call date_and_time(VALUES=values)
+call random_seed(size=k)
+allocate(seed(k))
+seed(:) = values
+call random_seed(put=seed)
+
+!open(unit=3, file='trace.dat', action="write")
+store=0
+do k=1,ntrajs
+   rho = rhozero
+   do j=1,nruns
+!      write(3,'(E22.7,A1,E22.7)') j*dt, char(9), trace(rho)
+      store(j) = store(j)+ trace(matmul(cdagger,c)*rho )
+      call random_number(random)
+      if (random < dt ) then
+         dN = 1
+      else
+         dN = 0
+      end if
+      rho = rho + delta_rho(rho,H,c,cdagger,dt,dN)
+   end do
+end do
+!close(3)
+
+open(unit=1, file=filename, action="write")
+ do j=1,nruns
+    write(1,'(E22.7,A1,E22.7)') j*dt, char(9), store(j)/ntrajs
+ end do
+close(1)
+
+end subroutine direct_detection
+
+
+subroutine homodyne_detection(nruns,ntrajs,dt,rhozero,c,cdagger,filename,H)
+  integer, intent(in) :: nruns, ntrajs
+  real(dp), intent(in) :: dt
+  complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
+  character(len=*), intent(in) :: filename
+real(dp), allocatable :: store(:)
+
+  integer :: seed
+  real(dp) :: dW
+  complex(dp) :: rho(2,2)
+  allocate(store(nruns))
+
+store = 0  
+!open(unit=3, file='trace.dat', action="write")
+do k=1,ntrajs
+   rho = rhozero
+   do j=1,nruns
+      dW = r8_normal_01(seed)*sqrt(dt)
+!     write(3,'(E22.7,A1,E22.7)') j*dt, char(9), trace(rho)
+      store(j) = store(j)+ trace(matmul(cdagger,c)*rho )
+      rho = rho + delta_rho_homodyne(rho,H,c,dt,dW)
+   end do
+
+end do
+!close(3)
+
+open(unit=1, file=filename, action="write")
+ do j=1,nruns
+    write(1,'(E22.7,A1,E22.7)') j*dt, char(9), store(j)/ntrajs
+ end do
+close(1)
+
+end subroutine homodyne_detection
+
+subroutine integrate_photocurrent(N,T,dt,rhozero,c,cdagger,filename,H)
+  integer, intent(in) :: N
+  real(dp), intent(in) :: dt,T
+  complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
+  character(len=*), intent(in) :: filename
+
+  integer ::  seed, ntrajs
+  real(dp) :: dW, current
+  complex(dp) :: rho(2,2)
+
+  ntrajs = int(T/dt)
+ 
+open(unit=4, file=filename, action="write")
+
+seed=1
+do k=1,ntrajs
+   rho = rhozero
+   current = 0
+   do j=1,N
+      dW = r8_normal_01(seed)*sqrt(dt)
+      current = current + trace(matmul(cdagger+c,rho))*dt + dW
+      rho = rho + delta_rho_homodyne(rho,H,c,dt,dW)
+   end do
+   write(4,'(E22.7)') current
+end do
+close(4)
+
+end subroutine integrate_photocurrent
+
+subroutine exact_solution(nruns, c, cdagger, dt ,filename, rhovec_zero, H)
+ integer, intent(in) :: nruns
+  real(dp), intent(in) :: dt
+  complex(dp), intent(in) :: rhovec_zero(:),c(:,:),cdagger(:,:),H(:,:)
+  character(len=*), intent(in) :: filename
+
+  complex(dp) :: rho(2,2), rhovec(4)
+
+open(unit=2, file=filename, action="write")
+do j=1,nruns
+rhovec = matmul( expm(j*dt,liouvillian(c,H)), rhovec_zero)
+rho(1,1) = rhovec(1)
+rho(2,1) = rhovec(2)
+rho(1,2) = rhovec(3)
+rho(2,2) = rhovec(4)
+write(2,'(E22.7,A1,E22.7)') j*dt, char(9), real(trace(matmul(cdagger,c)*rho ))
+end do
+close(2)
+
+end subroutine exact_solution
+
 
   pure function trace(matrix)
     complex(dp), intent(in) :: matrix(:,:)
@@ -42,11 +171,11 @@ contains
     trace = 0
 
     do i=1,n
-       trace = trace + matrix(i,i)
+       trace = trace + real(matrix(i,i))
     enddo
   end function trace
 
-   function superH(r,rho)
+  function superH(r,rho)
 
     complex(dp), intent(in) :: r(:,:), rho(:,:)
     complex(dp), allocatable ::superH(:,:) 
@@ -81,6 +210,24 @@ contains
 
   end function superG
 
+  pure function superD(c,rho)
+
+    complex(dp), intent(in) :: c(:,:), rho(:,:)
+    complex(dp), allocatable ::superD(:,:) 
+
+    complex(dp), allocatable :: cdagger(:,:)
+    integer :: n
+    n=size(c,1)
+
+    allocate(superD(n,n),cdagger(n,n))
+
+    cdagger = conjg(transpose(c))
+
+    superD = matmul(matmul(c,rho),cdagger) - matmul(matmul(cdagger,c),rho)/2 - matmul(matmul(rho,cdagger),c)/2
+
+  end function superD
+
+
   pure function dagger(matrix)
     complex(dp), intent(in) :: matrix(:,:)
     complex(dp), allocatable :: dagger(:,:)
@@ -105,7 +252,7 @@ contains
     identity_matrix = tmp
   end function identity_matrix
 
-   function delta_rho(rho,H,c,cdagger,delta_t,dN)
+  function delta_rho(rho,H,c,cdagger,delta_t,dN)
     complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:), cdagger(:,:)
     real(dp), intent(in) :: delta_t
     integer, intent(in) :: dN
@@ -121,12 +268,26 @@ contains
 
   end function delta_rho
 
-  function liouvillian(c,cdagger, H_eff) 
-    complex(dp), intent(in) :: H_eff(:,:), c(:,:), cdagger(:,:)
+  function delta_rho_homodyne(rho,H,c,dt,dW)
+    complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:)
+    real(dp), intent(in) :: dt, dW
+    complex(dp), allocatable ::delta_rho_homodyne(:,:) 
+
+    complex(dp) :: i 
+    integer :: n
+    i = complex(0,1)
+    n = size(rho,1)
+    allocate(delta_rho_homodyne(n,n))
+
+    delta_rho_homodyne = -i*(matmul(H,rho)-matmul(rho,H))*dt + superD(c,rho)*dt + superH(c,rho)*dW
+
+  end function delta_rho_homodyne
+
+  function liouvillian(c, H_eff) 
+    complex(dp), intent(in) :: H_eff(:,:), c(:,:)
     complex(dp) :: i = complex(0,1)
     complex(dp), dimension(2,2) :: identity
     complex(dp), allocatable :: liouvillian(:,:)
-    real(dp) :: Omega = 20
     integer :: n 
     n = size(c,1)
     allocate(liouvillian(n**2,n**2))
@@ -134,7 +295,7 @@ contains
     identity = reshape ( (/1,0,0,1/),(/2,2/) )
 
     liouvillian = -i*kronecker(identity,H_eff) + i*kronecker(conjg(H_eff),identity) +&
-&kronecker(conjg(c),c)
+         &kronecker(conjg(c),c)
 
   end function liouvillian
 
@@ -142,8 +303,7 @@ contains
 
     complex(dp), dimension (:,:), intent(in)  :: A, B
     complex(dp), dimension (:,:), allocatable :: kronecker
-    integer :: i = 0, j = 0, k = 0, l = 0
-    integer :: m = 0, n = 0, p = 0, q = 0
+    integer :: i = 0, j = 0, m = 0, n = 0, p = 0, q = 0
 
     allocate(kronecker(size(A,1)*size(B,1),size(A,2)*size(B,2)))
     kronecker = 0
@@ -186,9 +346,9 @@ contains
   subroutine ZGPADM(ideg,m,t,H,ldh,wsp,lwsp,ipiv,iexph,ns,iflag)
 
     implicit none
-    double precision t
-    integer          ideg, m, ldh, lwsp, iexph, ns, iflag, ipiv(m)
-    complex*16       H(ldh,m), wsp(lwsp)
+    real(dp) :: t
+    integer ::         ideg, m, ldh, lwsp, iexph, ns, iflag, ipiv(m)
+    complex(dp) ::       H(ldh,m), wsp(lwsp)
 
     !-----Purpose----------------------------------------------------------|
     !
@@ -230,11 +390,11 @@ contains
     !     ACM - Transactions On Mathematical Software, 24(1):130-156, 1998
     !----------------------------------------------------------------------|
     !
-    integer i,j,k,icoef,mm,ih2,iodd,iused,ifree,iq,ip,iput,iget
-    double precision hnorm
-    complex*16 cp, cq, scale, scale2, ZERO, ONE
+    integer :: i,j,k,icoef,mm,ih2,iodd,iused,ifree,iq,ip,iput,iget
+    real(dp) :: hnorm
+    complex(dp) :: cp, cq, scale, scale2, ZERO, ONE
 
-    parameter( ZERO=(0.0d0,0.0d0), ONE=(1.0d0,0.0d0) )
+    parameter ( ZERO=(0.0d0,0.0d0), ONE=(1.0d0,0.0d0) )
     intrinsic ABS, CMPLX, DBLE, INT, LOG, MAX
 
     !---  check restrictions on input parameters ...
@@ -351,6 +511,151 @@ contains
     iexph = iput
 
   END subroutine ZGPADM
+
+ function r8_uniform_01 ( seed )
+
+    !*****************************************************************************80
+    !
+    !! R8_UNIFORM_01 returns a unit pseudorandom R8.
+    !
+    !  Discussion:
+    !
+    !    This routine implements the recursion
+    !
+    !      seed = 16807 * seed mod ( 2^31 - 1 )
+    !      r8_uniform_01 = seed / ( 2^31 - 1 )
+    !
+    !    The integer arithmetic never requires more than 32 bits,
+    !    including a sign bit.
+    !
+    !    If the initial seed is 12345, then the first three computations are
+    !
+    !      Input     Output      R8_UNIFORM_01
+    !      SEED      SEED
+    !
+    !         12345   207482415  0.096616
+    !     207482415  1790989824  0.833995
+    !    1790989824  2035175616  0.947702
+    !
+    !  Licensing:
+    !
+    !    This code is distributed under the GNU LGPL license.
+    !
+    !  Modified:
+    !
+    !    31 May 2007
+    !
+    !  Author:
+    !
+    !    John Burkardt
+    !
+    !  Reference:
+    !
+    !    Paul Bratley, Bennett Fox, Linus Schrage,
+    !    A Guide to Simulation,
+    !    Second Edition,
+    !    Springer, 1987,
+    !    ISBN: 0387964673,
+    !    LC: QA76.9.C65.B73.
+    !
+    !    Bennett Fox,
+    !    Algorithm 647:
+    !    Implementation and Relative Efficiency of Quasirandom
+    !    Sequence Generators,
+    !    ACM Transactions on Mathematical Software,
+    !    Volume 12, Number 4, December 1986, pages 362-376.
+    !
+    !    Pierre L'Ecuyer,
+    !    Random Number Generation,
+    !    in Handbook of Simulation,
+    !    edited by Jerry Banks,
+    !    Wiley, 1998,
+    !    ISBN: 0471134031,
+    !    LC: T57.62.H37.
+    !
+    !    Peter Lewis, Allen Goodman, James Miller,
+    !    A Pseudo-Random Number Generator for the System/360,
+    !    IBM Systems Journal,
+    !    Volume 8, 1969, pages 136-143.
+    !
+    !  Parameters:
+    !
+    !    Input/output, integer ( kind = 4 ) SEED, the "seed" value, which
+    !    should NOT be 0.
+    !    On output, SEED has been updated.
+    !
+    !    Output, real ( kind = 8 ) R8_UNIFORM_01, a new pseudorandom variate,
+    !    strictly between 0 and 1.
+    !
+    implicit none
+
+    integer, intent(inout) :: seed
+    integer ::  k
+    real(dp) :: r8_uniform_01
+    
+
+    k = seed / 127773
+
+    seed = 16807 * ( seed - k * 127773 ) - k * 2836
+
+    if ( seed < 0 ) then
+       seed = seed + 2147483647
+    end if
+    !
+    !  Although SEED can be represented exactly as a 32 bit integer,
+    !  it generally cannot be represented exactly as a 32 bit real number!
+    !
+    r8_uniform_01 = seed * 4.656612875D-10
+
+
+  end function r8_uniform_01
+
+  function r8_normal_01 ( seed )
+
+    !*****************************************************************************80
+    !
+    !! R8_NORMAL_01 returns a unit pseudonormal R8.
+    !
+    !  Discussion:
+    !
+    !    The standard normal probability distribution function (PDF) has
+    !    mean 0 and standard deviation 1.
+    !
+    !  Licensing:
+    !
+    !    This code is distributed under the GNU LGPL license.
+    !
+    !  Modified:
+    !
+    !    06 August 2013
+    !
+    !  Author:
+    !
+    !    John Burkardt
+    !
+    !  Parameters:
+    !
+    !    Input/output, integer  SEED, a seed for the random
+    !    number generator.
+    !
+    !    Output, real  R8_NORMAL_01, a normally distributed
+    !    random value.
+    !
+    implicit none
+
+    real(dp):: r1, r2, r8_normal_01
+    real(dp), parameter :: r8_pi = 3.141592653589793D+00
+
+    integer, intent(inout) :: seed
+
+    r1 = r8_uniform_01(seed)
+    r2 = r8_uniform_01(seed)
+    r8_normal_01 = sqrt( - 2.0_dp * log ( r1 ) ) * cos ( 2.0_dp * r8_pi * r2 )
+
+    !print *, r8_normal_01 , 'bajs', seed
+
+  end function r8_normal_01
+
 
 end module module1
 
