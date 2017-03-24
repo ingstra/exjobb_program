@@ -4,6 +4,8 @@ import matplotlib.pylab as plt
 import matplotlib.mlab as mlab
 import numpy as np
 from scipy.stats import norm
+from scipy.misc import factorial
+import sympy.mpmath as mp
 
 #import sys
 #trace = np.loadtxt('trace.dat')
@@ -11,26 +13,46 @@ from scipy.stats import norm
 traj = np.loadtxt('traj.dat')
 exact = np.loadtxt('exact.dat')
 current = np.loadtxt('current.dat')
-#data = np.loadtxt('tst.dat')
+h =  np.loadtxt('hermite.dat')
 
 dt = 1e-3
-nruns = 1000
+nruns = 10000
+
+gamma = 2
 
 mu = 0
 variance = dt*nruns
 sigma = np.sqrt(variance)
 
-#plt.hist(current,50)
+values, bins, _ = plt.hist(current,50,normed=1,histtype='bar')
+area = sum(np.diff(bins)*values)
+print area
 
 #mufit, stdfit = norm.fit(current)
-#print 'calculated mean: ',mu,'fitted mean: ',mufit
-#print 'calculated std: ',sigma,'fitted std: ',stdfit
+#print 'fitted mean: ',mufit #, 'calculated mean: '
+#print 'fitted std: ',stdfit #,'calculated std: ',sigma
+
+plt.plot(h[:,0],h[:,1]**2,'.')
+
+range = 5
+x= np.linspace(-range,range,len(h[:,0]))
+
+n=1
+h_poly = np.frompyfunc(mp.hermite,2,1)
+
+const = 1/(np.sqrt(2**n * factorial(n)) * (2*np.pi)**0.25 )
+rest = const* np.exp(-x**2/4)
+tot  = (rest*h_poly(n,x/np.sqrt(2)))**2
+plt.plot(x,tot,'r-')
+
+print np.trapz(tot,x)
 
 
-plt.plot(traj[:,0],traj[:,1])
-plt.plot(exact[:,0],exact[:,1],'r--')
 
+#plt.plot(traj[:,0],traj[:,1])
+#plt.plot(exact[:,0],exact[:,1],'r--')
 
+#plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r--')
 
 #x = mu + sigma*np.random.randn(1000)
 #n, bins, patches = plt.hist(x, 50, facecolor='green', alpha=0.75)
@@ -41,7 +63,7 @@ plt.plot(exact[:,0],exact[:,1],'r--')
 #plt.plot(trace[:,0],trace[:,1])
 
 
-#plt.plot(traj[:,0],np.exp(-traj[:,0]),'r--')
+
 
 
 

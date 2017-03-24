@@ -1,8 +1,19 @@
 module module1
 
   integer, parameter :: dp = selected_real_kind(15, 307)
+  real(dp), parameter :: pi = 3.141592653589793
 
 contains
+
+pure function factorial(n)
+integer, intent(in) :: n
+
+integer :: i
+real(dp) :: factorial
+
+factorial = PRODUCT((/(i, i=1,n)/))
+
+end function factorial
 
   subroutine print_matrix(matrix,long_flag)
     implicit none
@@ -40,17 +51,12 @@ subroutine direct_detection(nruns,ntrajs,dt,rhozero,c,cdagger,filename,H)
   character(len=*), intent(in) :: filename
 
   real(dp), allocatable :: store(:)
-  integer, allocatable :: seed(:)
-  integer :: k, j, dN, values(8)
+  integer :: k, j, dN, seed
   complex(dp) :: rho(2,2)
   allocate(store(nruns))
 
-call date_and_time(VALUES=values)
-call random_seed(size=k)
-allocate(seed(k))
-seed(:) = values
-call random_seed(put=seed)
-
+    seed = 123456789
+    call srand(seed)
 !open(unit=3, file='trace.dat', action="write")
 store=0
 do k=1,ntrajs
@@ -78,68 +84,112 @@ close(1)
 end subroutine direct_detection
 
 
-subroutine homodyne_detection(nruns,ntrajs,dt,rhozero,c,cdagger,filename,H)
-  integer, intent(in) :: nruns, ntrajs
-  real(dp), intent(in) :: dt
-  complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
-  character(len=*), intent(in) :: filename
-real(dp), allocatable :: store(:)
+subroutine homodyne_detection(nruns,ntrajs,dt,rhozero,c,cdagger,gamma,filename,H)
 
-  integer :: seed
+use, intrinsic :: iso_fortran_env, only : stdout=>output_unit
+  integer, intent(in) :: nruns, ntrajs
+  real(dp), intent(in) :: dt, gamma
+  complex(dp), intent(in) :: rhozero(:,:), c(:,:),cdagger(:,:), H(:,:)
+  character(len=*), intent(in) :: filename
+  real(dp), allocatable :: store(:)
+
+  integer :: k,j,seed
   real(dp) :: dW
   complex(dp) :: rho(2,2)
+  character(len=*), parameter :: carriage_return =  char(13)
   allocate(store(nruns))
+  
+  seed = 123456789
 
-store = 0  
-!open(unit=3, file='trace.dat', action="write")
-do k=1,ntrajs
-   rho = rhozero
-   do j=1,nruns
-      dW = r8_normal_01(seed)*sqrt(dt)
-!     write(3,'(E22.7,A1,E22.7)') j*dt, char(9), trace(rho)
-      store(j) = store(j)+ trace(matmul(cdagger,c)*rho )
-      rho = rho + delta_rho_homodyne(rho,H,c,dt,dW)
-   end do
+  !open(unit=3, file='trace.dat', action="write")
+ 
+  do k=1,ntrajs
+     rho = rhozero
+     do j=1,nruns
+       dW = r8_normal_01(seed)*sqrt(dt)
+        !  write(3,'(E22.7,A1,E22.7)') j*dt, char(9), trace(rho)
+             ! write(3, '(E22.7)') dW
+        store(j) = store(j)+ trace(matmul(cdagger,c)*rho )
+        rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma)
+     end do
+     write(stdout,"(2a,i10,$)") carriage_return,"Calculating trajectory: ", k
+  end do
+  write(stdout,*) linefeed
+ ! close(3)
 
-end do
-!close(3)
-
-open(unit=1, file=filename, action="write")
- do j=1,nruns
-    write(1,'(E22.7,A1,E22.7)') j*dt, char(9), store(j)/ntrajs
- end do
-close(1)
+  open(unit=1, file=filename, action="write")
+  do j=1,nruns
+     write(1,'(E22.7,A1,E22.7)') j*dt, char(9), store(j)/ntrajs
+  end do
+  close(1)
 
 end subroutine homodyne_detection
 
-subroutine integrate_photocurrent(N,T,dt,rhozero,c,cdagger,filename,H)
-  integer, intent(in) :: N
-  real(dp), intent(in) :: dt,T
+subroutine integrate_photocurrent(nruns,ntrajs,dt,rhozero,c,cdagger,filename,H,gamma)
+
+use, intrinsic :: iso_fortran_env, only : stdout=>output_unit
+use hermite, only: evalHermitePoly
+
+  integer, intent(in) :: nruns,ntrajs
+  real(dp), intent(in) :: dt, gamma
   complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
   character(len=*), intent(in) :: filename
 
-  integer ::  seed, ntrajs
-  real(dp) :: dW, current
+  character(len=*), parameter :: carriage_return =  char(13)
+  integer ::  seed, n=1
+  real(dp) :: dW, current, t, t_tot, const,env_test
+  real(dp), allocatable :: h_poly(:),current_store(:)
+  
   complex(dp) :: rho(2,2)
 
-  ntrajs = int(T/dt)
- 
-open(unit=4, file=filename, action="write")
+  allocate(h_poly(ntrajs),current_store(ntrajs))
+  const = 1._dp/(sqrt(2._dp**n * factorial(n)) * (2._dp*pi)**0.25_dp )
+  seed = 123456789 
 
-seed=1
+  write(stdout,*) 'Time to integrate: ', nruns*dt
+  open(unit=4, file=filename, action="write")
+  t_tot = nruns*dt ! total time
+
 do k=1,ntrajs
    rho = rhozero
    current = 0
-   do j=1,N
+   t = 0
+env_test = 0
+   do j=1,nruns
       dW = r8_normal_01(seed)*sqrt(dt)
-      current = current + trace(matmul(cdagger+c,rho))*dt + dW
-      rho = rho + delta_rho_homodyne(rho,H,c,dt,dW)
+      current = current + (sqrt(gamma)*trace(matmul(cdagger+c,rho))*dt + dW)*envelope(gamma,t_tot,t)!/sqrt(t_tot)
+      rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma)
+      t = t + dt
+      env_test = env_test + dt*envelope(gamma,t_tot,t)**2._dp
    end do
+   write(stdout,"(2a,i10,$)") carriage_return,"Integrating current. Trajectory: ", k
    write(4,'(E22.7)') current
+   current_store(k) = current
+!print *, env_test
 end do
 close(4)
 
+h_poly = evalHermitePoly(current_store/sqrt(2d0),n)
+open(unit=5, file='hermite.dat', action="write")
+
+do j=1,ntrajs
+   write(5,'(E22.7,A1,E22.7)') current_store(j), char(9), &
+&const*exp(-current_store(j)**2._dp/4._dp)*h_poly(j)
+end do
+
+close(5)
+
 end subroutine integrate_photocurrent
+
+ function envelope(gamma,t_tot,t)
+  real(dp), intent(in) :: gamma, t_tot, t
+  real(dp) :: envelope, N
+
+  ! Normalization factor
+  N = sqrt(gamma/(1._dp-exp(-gamma*t_tot)))
+
+  envelope = N*exp(-0.5_dp*gamma*t)
+end function envelope
 
 subroutine exact_solution(nruns, c, cdagger, dt ,filename, rhovec_zero, H)
  integer, intent(in) :: nruns
@@ -268,9 +318,9 @@ end subroutine exact_solution
 
   end function delta_rho
 
-  function delta_rho_homodyne(rho,H,c,dt,dW)
+  function delta_rho_homodyne(rho,H,c,dt,dW,gamma)
     complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:)
-    real(dp), intent(in) :: dt, dW
+    real(dp), intent(in) :: dt, dW, gamma
     complex(dp), allocatable ::delta_rho_homodyne(:,:) 
 
     complex(dp) :: i 
@@ -279,7 +329,7 @@ end subroutine exact_solution
     n = size(rho,1)
     allocate(delta_rho_homodyne(n,n))
 
-    delta_rho_homodyne = -i*(matmul(H,rho)-matmul(rho,H))*dt + superD(c,rho)*dt + superH(c,rho)*dW
+    delta_rho_homodyne = -i*(matmul(H,rho)-matmul(rho,H))*dt + gamma*superD(c,rho)*dt + sqrt(gamma)*superH(c,rho)*dW
 
   end function delta_rho_homodyne
 
@@ -655,6 +705,55 @@ end subroutine exact_solution
     !print *, r8_normal_01 , 'bajs', seed
 
   end function r8_normal_01
+
+  ! From numerical recipes
+  SUBROUTINE gasdev_s(harvest)
+
+    REAL(dp), INTENT(OUT) :: harvest
+   ! Returns in harvest a normally distributed deviate with zero mean and unit variance, using the intrinsic random_number function as the source of uniform deviates.
+    REAL(dp) :: rsq,v1,v2
+    REAL(dp), SAVE :: g
+    LOGICAL, SAVE :: gaus_stored=.false.
+
+    integer:: n, i, clock,fixseed
+    integer, allocatable :: seed(:)
+   CALL RANDOM_SEED(size = n)
+    ALLOCATE(seed(n))
+    CALL SYSTEM_CLOCK(COUNT=clock)
+    call srand(fixseed)
+
+    seed = clock + 37 * (/ (i - 1, i = 1, n) /) !+ int(rand()*10)
+    CALL RANDOM_SEED(PUT = seed)
+
+
+
+    if (gaus_stored) then
+     !  We have an extra deviate handy so return it, and unset the flag.
+       harvest=g
+       gaus_stored=.false.     
+    else
+       ! We don’t have an extra deviate handy, so pick two uniform numbers in the square extending from -1 to +1 in each direction,
+       do
+          call random_number(v1)
+          call random_number(v2)
+          v1 = rand()
+          v2 = rand()
+         ! print *, v1, v2
+          v1=2.0_dp*v1-1.0_dp
+          v2=2.0_dp*v2-1.0_dp
+          rsq=v1**2+v2**2
+          !see if they are in the unit circle,
+          if (rsq > 0.0 .and. rsq < 1.0) exit
+       end do
+      ! otherwise try again.
+       rsq=sqrt(-2.0_dp*log(rsq)/rsq)
+      ! Now make the Box-Muller transformation to get two normal deviates. Return one and save the other for next time.
+       harvest=v1*rsq
+       g=v2*rsq
+       gaus_stored=.true.
+       !Set flag.
+    end if
+  END SUBROUTINE gasdev_s
 
 
 end module module1
