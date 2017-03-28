@@ -7,6 +7,9 @@ from scipy.stats import norm
 from scipy.misc import factorial
 import sympy.mpmath as mp
 
+plt.rc('text', usetex=True)
+plt.rc('font', family='serif')
+
 #import sys
 #trace = np.loadtxt('trace.dat')
 
@@ -24,10 +27,16 @@ variance = dt*nruns
 sigma = np.sqrt(variance)
 
 
-plt.plot(traj[:,0],traj[:,1])
-plt.plot(exact[:,0],exact[:,1],'g--')
 
-plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r:')
+#plt.plot(traj[:,0],np.abs(traj[:,1]-exact[:,1]),'g')
+plt.plot(traj[:,0],np.abs(traj[:,1]-np.exp(-gamma*traj[:,0])),'k',linewidth=2)
+print(np.max(np.abs(traj[:,1]-np.exp(-gamma*traj[:,0]))))
+plt.xlabel(r'Time')
+plt.ylabel(r'Error')
+#plt.plot(exact[:,0],exact[:,1],'g--')
+
+#plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r:')
+
 
 
 #plt.plot(trace[:,0],trace[:,1])

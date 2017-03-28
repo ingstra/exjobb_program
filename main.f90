@@ -15,17 +15,18 @@ program main
   real(dp), parameter ::  dt = 1e-3
   real(dp) ::  gamma, Omega, w, start, finish
  
-  integer ::  nruns = 10000, ntrajs = 4000
-  
+  integer ::  nruns = 15000, ntrajs = 500
+logical :: milstein = .true.
+!logical :: milstein = .false.
 
   sigma_plus = reshape ( (/ 0,0,1,0/),(/2,2/) )
   sigma_minus = reshape ( (/ 0,1,0,0/),(/2,2/) )
   sigma_z = reshape ( (/ 1,0,0,-1/),(/2,2/) )
-  rhozero = reshape ( (/1,0,0,0/),(/2,2/) )
-  rhovec_zero = (/1,0,0,0/)
+  rhozero = reshape ( (/0,0,0,1/),(/2,2/) )
+  rhovec_zero = (/0,0,0,1/)
 
-   gamma = 0.1
-   Omega = 5
+   gamma = 1
+   Omega = 0.5_dp
    w = 1
 
    
@@ -33,28 +34,33 @@ program main
    ! resonant fluorescence
    !H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 + Omega*(sigma_plus + sigma_minus)/2
    
-   H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 !+ Omega*(sigma_plus + sigma_minus)/2
+   H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2! + Omega*(sigma_plus + sigma_minus)/2
 
   ! H_traj =  w*sigma_z/2 
 
- H_traj =  0!Omega*(sigma_plus + sigma_minus)/2
+ H_traj =  -i*sqrt(0.5_dp*gamma)*Omega*(sigma_plus-sigma_minus) !Omega*(sigma_plus + sigma_minus)/2
 
 call cpu_time(start)
 
-!call homodyne_detection(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,gamma,'traj.dat',H_traj)
+!call homodyne_detection(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,gamma,'traj1.dat',H_traj,milstein)
 
-!call cpu_time(finish)
-!print '("Time = ",f10.3," seconds for trajectory solution.")',finish-start
+call cpu_time(finish)
 
-call integrate_photocurrent(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,'current.dat',H_traj,gamma)
+print '("Time = ",f10.3," seconds for trajectory solution.")',finish-start
 
+call cpu_time(start)
 
-!call cpu_time(start)
+call integrate_photocurrent(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,H_traj,gamma,milstein)
+
+call cpu_time(finish)
+print *, char(10)
+ print '("Time = ",f10.3," seconds for current integration.")',finish-start
+
+call cpu_time(start)
 !call exact_solution(nruns,sigma_minus,sigma_plus,dt,'exact.dat',rhovec_zero, H)
 
 call cpu_time(finish)
- print '("Time = ",f10.3," seconds.")',finish-start
-!    print '("Time = ",f6.3," seconds for exact solution.")',finish-start
+ print '("Time = ",f6.3," seconds for exact solution.")',finish-start
 
 end program main
 

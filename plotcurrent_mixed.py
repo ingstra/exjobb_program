@@ -7,30 +7,64 @@ from scipy.stats import norm
 from scipy.misc import factorial
 import sympy.mpmath as mp
 
-#import sys
-#trace = np.loadtxt('trace.dat')
-
-traj = np.loadtxt('traj.dat')
-exact = np.loadtxt('exact.dat')
 current = np.loadtxt('current.dat')
-
+h =  np.loadtxt('hermite.dat')
+current=current[0,:]
 dt = 1e-3
 nruns = 10000
 
-gamma = 1
+gamma = 2
 
 mu = 0
 variance = dt*nruns
 sigma = np.sqrt(variance)
 
+values, bins, _ = plt.hist(current,50,normed=1,histtype='bar')
+area = sum(np.diff(bins)*values)
+print area
 
-plt.plot(traj[:,0],traj[:,1])
-plt.plot(exact[:,0],exact[:,1],'g--')
+#mufit, stdfit = norm.fit(current)
+#print 'fitted mean: ',mufit #, 'calculated mean: '
+#print 'fitted std: ',stdfit #,'calculated std: ',sigma
 
-plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r:')
+#plt.plot(h[:,0],h[:,1]**2,'.')
+
+range = 5
+x= np.linspace(-range,range,len(h[:,0]))
+
+n=1
+h_poly = np.frompyfunc(mp.hermite,2,1)
+
+const1 = 1/(np.sqrt(2**n * factorial(n)) * (2*np.pi)**0.25 )
+rest1 = const1* np.exp(-x**2/4)
+tot1  = (rest1*h_poly(n,x/np.sqrt(2)))**2
+
+n=0
+const0 = 1/(np.sqrt(2**n * factorial(n)) * (2*np.pi)**0.25 )
+rest0 = const0* np.exp(-x**2/4)
+tot0  = (rest0*h_poly(n,x/np.sqrt(2)))**2
+
+
+plt.plot(x,(tot0+tot1)/2,'r-')
+
+
+
+
+
+#plt.plot(traj[:,0],traj[:,1])
+#plt.plot(exact[:,0],exact[:,1],'r--')
+
+#plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r--')
+
+#x = mu + sigma*np.random.randn(1000)
+#n, bins, patches = plt.hist(x, 50, facecolor='green', alpha=0.75)
+#y = mlab.normpdf( bins, mu, sigma)
+#l = plt.plot(bins, y, 'r--')
 
 
 #plt.plot(trace[:,0],trace[:,1])
+
+
 
 
 
@@ -63,7 +97,6 @@ def p_plus(t):
 
 #plt.plot(data[:,0],p_plus(data[:,0]),'g')
 
-plt.tight_layout()
-plt.savefig('testplot',figsize=(20,10))
+
 
 plt.show()

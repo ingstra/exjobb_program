@@ -27,13 +27,9 @@ sigma = np.sqrt(variance)
 plt.plot(traj[:,0],traj[:,1])
 plt.plot(exact[:,0],exact[:,1],'g--')
 
-plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r:')
-
+#plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r:')
 
 #plt.plot(trace[:,0],trace[:,1])
-
-
-
 
 def avg_Z(t):
     Omega = 1
@@ -59,7 +55,7 @@ def p_plus(t):
     gamma = 1
     return (1 - np.exp(-3*gamma*t/4)*np.cos(Omega*t))/2
 
-#plt.plot(traj[:,0],avg_Z(traj[:,0]),'r--')
+plt.plot(traj[:,0],avg_Z(traj[:,0]),'r--')
 
 #plt.plot(data[:,0],p_plus(data[:,0]),'g')
 

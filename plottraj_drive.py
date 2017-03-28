@@ -10,7 +10,7 @@ import sympy.mpmath as mp
 #import sys
 #trace = np.loadtxt('trace.dat')
 
-traj = np.loadtxt('traj.dat')
+traj = np.loadtxt('traj1.dat')
 exact = np.loadtxt('exact.dat')
 current = np.loadtxt('current.dat')
 
@@ -27,16 +27,12 @@ sigma = np.sqrt(variance)
 plt.plot(traj[:,0],traj[:,1])
 plt.plot(exact[:,0],exact[:,1],'g--')
 
-plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r:')
-
+#plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r:')
 
 #plt.plot(trace[:,0],trace[:,1])
 
-
-
-
-def avg_Z(t):
-    Omega = 1
+def p_plus(t):
+    Omega = 0.5
     gamma = 1
     
     if 4*Omega < gamma:
@@ -49,19 +45,9 @@ def avg_Z(t):
 
     return  K1*(1 - np.exp(-3*gamma*t/4)*hyp ) #- 1/2
 
-def avg_Z_big_Omega(t):
-    Omega = 5
-    gamma = 1
-    return -np.exp(-3*gamma*t/4)*np.cos(Omega*t)/2
+plt.plot(traj[:,0],p_plus(traj[:,0]),'r--')
 
-def p_plus(t):
-    Omega = 5
-    gamma = 1
-    return (1 - np.exp(-3*gamma*t/4)*np.cos(Omega*t))/2
 
-#plt.plot(traj[:,0],avg_Z(traj[:,0]),'r--')
-
-#plt.plot(data[:,0],p_plus(data[:,0]),'g')
 
 plt.tight_layout()
 plt.savefig('testplot',figsize=(20,10))

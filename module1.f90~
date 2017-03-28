@@ -1,0 +1,118 @@
+module module1
+
+  integer, parameter :: dp = selected_real_kind(15, 307)
+
+contains
+
+  subroutine print_matrix(matrix,long_flag)
+    implicit none
+
+    !input
+    !>matrix which you want to print
+    complex(dp),intent(in) :: matrix(:,:)
+
+    !>true value make subroutine print with longer format
+    logical, intent(in), optional :: long_flag
+
+    !locals
+    !row index of matrix
+    integer :: i
+  
+    !format string for output
+    character(20) :: format
+
+    if (present(long_flag).and.long_flag) then
+       format='(20G20.12)'
+    else
+       format='(20G12.4)'
+    end if
+
+    do i=1,size(matrix,1) 
+       write(*,format) real(matrix(i,:))
+    end do
+
+  end subroutine print_matrix
+
+
+pure function trace(matrix)
+  complex(dp), intent(in) :: matrix(:,:)
+  complex(dp) :: trace
+  integer :: n 
+  n = size(matrix,1)
+  trace = 0
+
+  do i=1,n
+     trace = trace + matrix(i,i)
+  enddo
+end function trace
+
+pure function superH(r,rho)
+
+  complex(dp), intent(in) :: r(:,:), rho(:,:)
+  complex(dp), allocatable ::superH(:,:) 
+
+  integer :: n
+  n=size(r,1)
+
+  allocate(superH(n,n))
+
+  superH = matmul(r,rho) + matmul(rho,dagger(r)) - trace( matmul(r,rho) + matmul(rho,dagger(r)) )*identity_matrix(n)
+
+end function superH
+
+pure function superG(r,rho)
+
+  complex(dp), intent(in) :: r(:,:), rho(:,:)
+  complex(dp), allocatable ::superG(:,:) 
+
+  integer :: n
+  n=size(r,1)
+
+  allocate(superG(n,n))
+
+  superG = matmul(matmul(r,rho),dagger(r))/trace( matmul(matmul(r,rho),dagger(r)) ) - rho
+
+end function superG
+
+pure function dagger(matrix)
+  complex(dp), intent(in) :: matrix(:,:)
+  complex(dp), allocatable :: dagger(:,:)
+  integer :: n 
+  n = size(matrix,1)
+  allocate(dagger(n,n))
+
+ dagger = conjg(transpose(matrix))
+end function dagger
+
+pure function identity_matrix(n)
+   integer, intent(in) :: n
+   real(dp), dimension(n,n) :: tmp
+   complex(dp), allocatable :: identity_matrix(:,:)
+   allocate(identity_matrix(n,n))
+
+   tmp = 0
+   do i=1,n
+      tmp(i,i) = 1 
+   end do
+
+   identity_matrix = tmp
+end function identity_matrix
+
+pure function delta_rho(rho,H,c,cdagger,delta_t,dN)
+ complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:), cdagger(:,:)
+ real(dp), intent(in) :: dN, delta_t
+  complex(dp), allocatable ::delta_rho(:,:) 
+
+  complex(dp) :: i 
+  integer :: n
+  i = complex(0,1)
+  n = size(rho,1)
+  allocate(delta_rho(n,n))
+  
+delta_rho = dN*superG(c,rho)-delta_t*superH(i*H + matmul(cdagger,c)/2,rho)
+
+end function delta_rho
+
+end module module1
+
+
