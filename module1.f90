@@ -5,13 +5,13 @@ module module1
 
 contains
 
-  pure function factorial(n)
+  pure function factorial(n) result(y)
     integer, intent(in) :: n
 
     integer :: i
-    real(dp) :: factorial
+    real(dp) :: y
 
-    factorial = PRODUCT((/(i, i=1,n)/))
+   y = PRODUCT((/(i, i=1,n)/))
 
   end function factorial
 
@@ -132,6 +132,7 @@ contains
 
    subroutine integrate_photocurrent(nruns,ntrajs,dt,rhozero,c,cdagger,H,gamma,mflag)
 
+    use omp_lib
     use, intrinsic :: iso_fortran_env, only : stdout=>output_unit
     use hermite, only: evalHermitePoly
 
@@ -141,73 +142,85 @@ contains
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
 
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
-    integer ::  seed, k, j, m, n=1, nangles=19
+    integer ::  seed, clock, k, j, m, n=1, nangles=100
     real(dp) :: dW, current, t, t_tot, const, dtheta, theta, llim=10
-    real(dp), allocatable :: h_poly(:),current_store(:)
+    !real(dp), allocatable :: h_poly(:),current_store(:)
     character(len=100) :: string
-
+   
     complex(dp) :: rho(2,2), i = complex(0,1)
+    
 
-    allocate(h_poly(ntrajs),current_store(ntrajs))
+   ! allocate(h_poly(ntrajs),current_store(ntrajs))
     const = 1._dp/(sqrt(2._dp**n * factorial(n)) * (2._dp*pi)**0.25_dp )
-    seed = 123456789 
+    seed = 123456789
 
     t_tot = nruns*dt ! total time
     dtheta = pi/nangles
 
-    write(stdout,*) 'Time to integrate: ', nruns*dt
+    write(stdout,*) 'Time to integrate: ', nruns*dt-llim
 
     open(unit=4, file='current.dat', action="write")
-   
-    do m=0,nangles
+
+   ! call omp_set_nested(.true.)
+
+    do m=0,nangles-1
        theta=m*dtheta
-       write(stdout,"(A2,A13,I2,A8,I2,A3,F25.10)") newline, "Angle number ", m+1, " out of ", nangles+1, " : ", theta
+       write(stdout,"(A2,A13,I3,A8,I3,A3,F25.10)") newline, "Angle number ", m+1, " out of ", nangles, " : ", theta
+  
        do k=1,ntrajs
           rho = rhozero
           current = 0
           t = 0
+  !$OMP PARALLEL DO
           do j=1,nruns
              dW = r8_normal_01(seed)*sqrt(dt)
              if (t .ge. llim) then
-                current = current + (sqrt(gamma)*trace(matmul(cdagger*exp(i*theta)+&
+                current = current + (sqrt(0.5_dp*gamma)*trace(matmul(cdagger*exp(i*theta)+&
 & c*exp(-i*theta),rho))*dt + dW)/sqrt(t_tot-llim)!*envelope(gamma,t_tot,t)!/sqrt(t_tot)
              end if
-          if (mflag .eqv. .true.) then
+             if (isnan(current)) then
+                print *, 'Got Nan. '!  trace=',  trace(matmul(cdagger*exp(i*theta)+ c*exp(-i*theta),rho))*dt 
+                call exit(1)
+             end if
+             if (mflag .eqv. .true.) then
                 rho = rho + delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma)
-             else
+             else            
                 rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta)
              end if
              t = t + dt
           end do
+  !$OMP END PARALLEL DO
           write(stdout,"(2a,i4,$)") carriage_return,"Integrating current. Trajectory: ", k
           write(string,'(E25.15)') current
           write(4,'(A25)', advance='no') adjustl(string) 
-          current_store(k) = current
+          !current_store(k) = current
           end do
+
      write(4,*) 
     end do
+
     close(4)
 
-    h_poly = evalHermitePoly(current_store/sqrt(2d0),n)
-    open(unit=5, file='hermite.dat', action="write")
+    !h_poly = evalHermitePoly(current_store/sqrt(2d0),n)
+   ! open(unit=5, file='hermite.dat', action="write")
 
-    do j=1,ntrajs
-       write(5,'(E22.7,A1,E22.7)') current_store(j), char(9), &
-            &const*exp(-current_store(j)**2._dp/4._dp)*h_poly(j)
-    end do
+   ! do j=1,ntrajs
+   !    write(5,'(E22.7,A1,E22.7)') current_store(j), char(9), &
+  !          &const*exp(-current_store(j)**2._dp/4._dp)*h_poly(j)
+  !  end do
 
-    close(5)
+   ! close(5)
 
   end subroutine integrate_photocurrent
 
-  function envelope(gamma,t_tot,t)
+  function envelope(gamma,t_tot,t) result(y)
     real(dp), intent(in) :: gamma, t_tot, t
-    real(dp) :: envelope, N
+    real(dp) :: N,y
 
     ! Normalization factor
     N = sqrt(gamma/(1._dp-exp(-gamma*t_tot)))
 
-    envelope = N*exp(-0.5_dp*gamma*t)
+    y = N*exp(-0.5_dp*gamma*t)
   end function envelope
 
   subroutine exact_solution(nruns, c, cdagger, dt ,filename, rhovec_zero, H)
@@ -232,129 +245,130 @@ contains
   end subroutine exact_solution
 
 
-  pure function trace(matrix)
+  pure function trace(matrix) result(y)
     complex(dp), intent(in) :: matrix(:,:)
-    real(dp) :: trace
+    real(dp) :: y
     integer :: n 
     n = size(matrix,1)
-    trace = 0
+    y = 0
 
     do i=1,n
-       trace = trace + real(matrix(i,i))
+       y = y + real(matrix(i,i))
     enddo
   end function trace
 
-  function superH(r,rho)
+  function superH(r,rho) result(y)
 
     complex(dp), intent(in) :: r(:,:), rho(:,:)
-    complex(dp), allocatable ::superH(:,:) 
+    complex(dp), allocatable ::y(:,:) 
 
     integer :: n
     n=size(r,1)
 
-    allocate(superH(n,n))
+    allocate(y(n,n))
 
-    superH = matmul(r,rho) + matmul(rho,dagger(r)) - trace( matmul(r,rho) + matmul(rho,dagger(r)) )*rho
+    y = matmul(r,rho) + matmul(rho,dagger(r)) - trace( matmul(r,rho) + matmul(rho,dagger(r)) )*rho
   end function superH
 
-  pure function superG(r,rho)
+  pure function superG(r,rho) result(y)
 
     complex(dp), intent(in) :: r(:,:), rho(:,:)
-    complex(dp), allocatable ::superG(:,:) 
+    complex(dp), allocatable ::y(:,:) 
     real(dp) :: tracevalue
 
     integer :: n
     n=size(r,1)
 
-    allocate(superG(n,n))
+    allocate(y(n,n))
 
     tracevalue = real( trace( matmul(matmul(r,rho),dagger(r)) ) )
 
     if (tracevalue /= 0) then
-       superG = matmul(matmul(r,rho),dagger(r))/tracevalue - rho
+       y = matmul(matmul(r,rho),dagger(r))/tracevalue - rho
     else
-       superG = 0!- rho
+       y = 0!- rho
     end if
 
   end function superG
 
-  pure function superD(c,rho)
+  pure function superD(c,rho) result(y)
 
     complex(dp), intent(in) :: c(:,:), rho(:,:)
-    complex(dp), allocatable ::superD(:,:) 
+    complex(dp), allocatable ::y(:,:) 
 
     complex(dp), allocatable :: cdagger(:,:)
     integer :: n
     n=size(c,1)
 
-    allocate(superD(n,n),cdagger(n,n))
+    allocate(y(n,n),cdagger(n,n))
 
     cdagger = conjg(transpose(c))
 
-    superD = matmul(matmul(c,rho),cdagger) - matmul(matmul(cdagger,c),rho)/2 - matmul(matmul(rho,cdagger),c)/2
+    y = matmul(matmul(c,rho),cdagger) - 0.5_dp*matmul(matmul(cdagger,c),rho) - 0.5_dp*matmul(matmul(rho,cdagger),c)
 
   end function superD
 
 
-  pure function dagger(matrix)
+  pure function dagger(matrix) result(y)
     complex(dp), intent(in) :: matrix(:,:)
-    complex(dp), allocatable :: dagger(:,:)
+    complex(dp), allocatable :: y(:,:)
     integer :: n 
     n = size(matrix,1)
-    allocate(dagger(n,n))
+    allocate(y(n,n))
 
-    dagger = conjg(transpose(matrix))
+    y = conjg(transpose(matrix))
   end function dagger
 
-  pure function identity_matrix(n)
+  pure function identity_matrix(n) result(y)
     integer, intent(in) :: n
-    real(dp), dimension(n,n) :: tmp
-    complex(dp), allocatable :: identity_matrix(:,:)
-    allocate(identity_matrix(n,n))
+    real(dp), dimension(n,n) :: y
 
-    tmp = 0
+    y = 0
     do i=1,n
-       tmp(i,i) = 1 
+       y(i,i) = 1 
     end do
-
-    identity_matrix = tmp
   end function identity_matrix
 
-  function delta_rho(rho,H,c,cdagger,delta_t,dN)
+  function delta_rho(rho,H,c,cdagger,delta_t,dN) result(y)
     complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:), cdagger(:,:)
     real(dp), intent(in) :: delta_t
     integer, intent(in) :: dN
-    complex(dp), allocatable ::delta_rho(:,:) 
+    complex(dp), allocatable ::y(:,:) 
 
     complex(dp) :: i 
     integer :: n
     i = complex(0,1)
     n = size(rho,1)
-    allocate(delta_rho(n,n))
+    allocate(y(n,n))
 
-    delta_rho = dN*superG(c,rho)-delta_t*superH(i*H + matmul(cdagger,c)/2,rho)
+    y = dN*superG(c,rho)-delta_t*superH(i*H + matmul(cdagger,c)/2,rho)
 
   end function delta_rho
 
-  function delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta) 
+  function delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta) result(y)
     complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:)
     real(dp), intent(in) :: dt, dW, gamma, theta
-    complex(dp), allocatable ::delta_rho_homodyne(:,:) 
+    complex(dp), allocatable ::y(:,:) 
 
     complex(dp) :: i 
     integer :: n
     i = complex(0,1)
     n = size(rho,1)
-    allocate(delta_rho_homodyne(n,n))
+    allocate(y(n,n))
 
-    delta_rho_homodyne = -i*(matmul(H,rho)-matmul(rho,H))*dt + gamma*superD(c,rho)*dt +&
+    y = -i*(matmul(H,rho)-matmul(rho,H))*dt + gamma*superD(c,rho)*dt +&
 & sqrt(0.5_dp*gamma)*superH(c*exp(-i*theta),rho)*dW
+
+    if (isnan(trace(y))) then
+       call print_matrix(rho)
+       call exit(1)
+    end if
   end function delta_rho_homodyne
 
-  function delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma)
+  function delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma) result(y)
     complex(dp), intent(in) :: rho(:,:), c(:,:), cdagger(:,:), H(:,:)
     real(dp), intent(in) :: dt, dW, gamma
-    complex(dp), allocatable ::delta_rho_milstein(:,:) 
+    complex(dp), allocatable ::y(:,:) 
 
     complex(dp) :: i 
 
@@ -362,39 +376,41 @@ contains
     integer :: n
     i = complex(0,1)
     n = size(rho,1)
-    allocate(delta_rho_milstein(n,n))
+    allocate(y(n,n))
 
     term1 = matmul(c,c)*rho + 2._dp*matmul(c,rho)*cdagger + matmul(rho,cdagger)*cdagger
     term2 = matmul(c,rho) + matmul(rho,cdagger)
 
-    delta_rho_milstein =  -i*(matmul(H,rho)-matmul(rho,H))*dt + gamma*superD(c,rho)*dt + sqrt(0.5_dp*gamma)*superH(c,rho)*dW +&
-         & (0.5_dp*gamma*term1-gamma*trace(term1) + 2._dp*sqrt(0.5_dp*gamma)*trace(term2)*(trace(term2)*rho-term2))*(dW**2-dt)/2._dp
+    y = -i*(matmul(H,rho)-matmul(rho,H))*dt + gamma*superD(c,rho)*dt + &
+& sqrt(0.5_dp*gamma)*superH(c,rho)*dW + (0.5_dp*gamma*term1-gamma*trace(term1) + &
+& 2._dp*sqrt(0.5_dp*gamma)*trace(term2)*(trace(term2)*rho-term2))*(dW**2._dp-dt)/2._dp
+
   end function delta_rho_milstein
 
-  function liouvillian(c, H_eff) 
+  function liouvillian(c, H_eff) result(y)
     complex(dp), intent(in) :: H_eff(:,:), c(:,:)
     complex(dp) :: i = complex(0,1)
     complex(dp), dimension(2,2) :: identity
-    complex(dp), allocatable :: liouvillian(:,:)
+    complex(dp), allocatable :: y(:,:)
     integer :: n 
     n = size(c,1)
-    allocate(liouvillian(n**2,n**2))
+    allocate(y(n**2,n**2))
 
     identity = reshape ( (/1,0,0,1/),(/2,2/) )
 
-    liouvillian = -i*kronecker(identity,H_eff) + i*kronecker(conjg(H_eff),identity) +&
+    y = -i*kronecker(identity,H_eff) + i*kronecker(conjg(H_eff),identity) +&
          &kronecker(conjg(c),c)
 
   end function liouvillian
 
-  function kronecker(A,B) 
+  function kronecker(A,B) result(y)
 
     complex(dp), dimension (:,:), intent(in)  :: A, B
-    complex(dp), dimension (:,:), allocatable :: kronecker
+    complex(dp), dimension (:,:), allocatable :: y
     integer :: i = 0, j = 0, m = 0, n = 0, p = 0, q = 0
 
-    allocate(kronecker(size(A,1)*size(B,1),size(A,2)*size(B,2)))
-    kronecker = 0
+    allocate(y(size(A,1)*size(B,1),size(A,2)*size(B,2)))
+    y = 0
 
     do i = 1,size(A,1)
        do j = 1,size(A,2)
@@ -402,7 +418,7 @@ contains
           m=n+size(B,1)
           p=(j-1)*size(B,2) + 1
           q=p+size(B,2) 
-          kronecker(n:m,p:q) = A(i,j)*B
+          y(n:m,p:q) = A(i,j)*B
        enddo
     enddo
 
@@ -753,14 +769,14 @@ contains
     REAL(dp), SAVE :: g
     LOGICAL, SAVE :: gaus_stored=.false.
 
-    integer:: n, i, clock,fixseed
+    integer:: n, clock 
     integer, allocatable :: seed(:)
     CALL RANDOM_SEED(size = n)
     ALLOCATE(seed(n))
     CALL SYSTEM_CLOCK(COUNT=clock)
-    call srand(fixseed)
+    call srand(45)
 
-    seed = clock + 37 * (/ (i - 1, i = 1, n) /) !+ int(rand()*10)
+    seed = clock + 37 * (/ (i - 1, i = 1, n) /) 
     CALL RANDOM_SEED(PUT = seed)
 
 
@@ -774,8 +790,8 @@ contains
        do
           call random_number(v1)
           call random_number(v2)
-          v1 = rand()
-          v2 = rand()
+          !v1 = rand()
+          !v2 = rand()
           ! print *, v1, v2
           v1=2.0_dp*v1-1.0_dp
           v2=2.0_dp*v2-1.0_dp

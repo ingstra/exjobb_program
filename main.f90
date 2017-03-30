@@ -1,6 +1,7 @@
 
 program main
-
+  
+  use omp_lib
   use module1, only: dp, print_matrix, trace, dagger, superH, superG,kronecker, expm,&
 & liouvillian, delta_rho, r8_normal_01, delta_rho_homodyne, superD, homodyne_detection,&
 & integrate_photocurrent, exact_solution, factorial
@@ -13,11 +14,11 @@ program main
   complex(dp) :: i = complex(0,1),rhovec_zero(4)
  
   real(dp), parameter ::  dt = 1e-3
-  real(dp) ::  gamma, Omega, w, start, finish
+  real(dp) ::  gamma, Omega, w, start, finish, ompstart, ompend
  
   integer ::  nruns = 15000, ntrajs = 500
-logical :: milstein = .true.
-!logical :: milstein = .false.
+!logical :: milstein = .true.
+logical :: milstein = .false.
 
   sigma_plus = reshape ( (/ 0,0,1,0/),(/2,2/) )
   sigma_minus = reshape ( (/ 0,1,0,0/),(/2,2/) )
@@ -32,13 +33,13 @@ logical :: milstein = .true.
    
 
    ! resonant fluorescence
-   !H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 + Omega*(sigma_plus + sigma_minus)/2
+   H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 + Omega*(sigma_plus + sigma_minus)/2
    
-   H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2! + Omega*(sigma_plus + sigma_minus)/2
+  ! H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 -i*sqrt(0.5_dp*gamma)*Omega*(sigma_plus-sigma_minus) ! + Omega*(sigma_plus + sigma_minus)/2
 
   ! H_traj =  w*sigma_z/2 
 
- H_traj =  -i*sqrt(0.5_dp*gamma)*Omega*(sigma_plus-sigma_minus) !Omega*(sigma_plus + sigma_minus)/2
+ H_traj = -i*sqrt(0.5_dp*gamma)*Omega*(sigma_plus-sigma_minus) !Omega*(sigma_plus + sigma_minus)/2
 
 call cpu_time(start)
 
@@ -50,11 +51,20 @@ print '("Time = ",f10.3," seconds for trajectory solution.")',finish-start
 
 call cpu_time(start)
 
+ompstart = omp_get_wtime()
+
 call integrate_photocurrent(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,H_traj,gamma,milstein)
 
 call cpu_time(finish)
 print *, char(10)
- print '("Time = ",f10.3," seconds for current integration.")',finish-start
+
+ompend = omp_get_wtime()
+
+ print '("Time = ",f10.3," seconds for current integration.")',ompend-ompstart
+
+
+
+
 
 call cpu_time(start)
 !call exact_solution(nruns,sigma_minus,sigma_plus,dt,'exact.dat',rhovec_zero, H)
