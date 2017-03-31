@@ -5,6 +5,51 @@ module module1
 
 contains
 
+  function wavefunction(n,x) result(y)
+
+    use hermite, only: evalHermitePoly
+
+    integer, intent(in) :: n
+    real(dp), intent(in) ::  x(:)
+
+    real(dp) :: const
+    real(dp), allocatable :: h_poly(:), y(:)
+    integer :: sizeX
+    sizeX = size(x)
+    allocate(h_poly(sizeX),y(sizeX))
+
+    const = 1._dp/(sqrt(2._dp**n * factorial(n)) * (2._dp*pi)**0.25_dp )
+    !print *, const
+    h_poly = evalHermitePoly(x/sqrt(2._dp),n)
+
+    y = const*exp(-x**2._dp/4._dp)*h_poly
+    return
+  end function wavefunction
+
+  function tomography_projector(j,theta,dx,Nbins,NFock,L) result(y)
+    integer, intent(in) :: j, Nbins,NFock
+    real(dp) , intent(in) :: theta, dx,L
+
+    integer:: m,n,p,nint
+    complex(dp), allocatable :: y(:,:)
+    real(dp), allocatable :: x(:),fcn1(:),fcn2(:),multfcn(:)
+
+    nint=10
+    allocate(y(NFock,NFock),x(nint),fcn1(nint),fcn2(nint),multfcn(nint))
+
+    call linspace(-L+(j-1)*dx,-L+j*dx,nint,x)
+
+    do m=0,NFock-1
+       do n=0,NFock-1
+          fcn1 = wavefunction(n,x)
+          fcn2 = wavefunction(m,x)
+          multfcn(1:nint) = fcn1(1:nint)*fcn2(1:nint)
+          y(m+1,n+1) = exp(-i*(n-m)*theta)*integrate(x,multfcn)
+       end do
+    end do
+
+  end function tomography_projector
+
   pure function factorial(n) result(y)
     integer, intent(in) :: n
 
@@ -14,6 +59,35 @@ contains
    y = PRODUCT((/(i, i=1,n)/))
 
   end function factorial
+
+ subroutine print_matrix_real(matrix,long_flag)
+    implicit none
+
+    !input
+    !>matrix which you want to print
+    real(dp),intent(in) :: matrix(:,:)
+
+    !>true value make subroutine print with longer format
+    logical, intent(in), optional :: long_flag
+
+    !locals
+    !row index of matrix
+    integer :: i
+
+    !format string for output
+    character(20) :: format
+
+    if (present(long_flag).and.long_flag) then
+       format='(20G20.12)'
+    else
+       format='(20G12.4)'
+    end if
+
+    do i=1,size(matrix,1) 
+       write(*,format) real(matrix(i,:))
+    end do
+
+  end subroutine print_matrix_real
 
   subroutine print_matrix(matrix,long_flag)
     implicit none
@@ -142,16 +216,22 @@ contains
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
 
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
-    integer ::  seed, clock, k, j, m, n=1, nangles=100
-    real(dp) :: dW, current, t, t_tot, const, dtheta, theta, llim=10
-    !real(dp), allocatable :: h_poly(:),current_store(:)
-    character(len=100) :: string
-   
+    integer ::  seed, clock, k, j, p, q, n, m, NFock=2, Nbins=50, nangles=5
+    real(dp) :: dW, current, t, t_tot, dx, L=5, dtheta, theta, llim=10
+    real(dp), allocatable :: current_store(:), h_poly(:), tomproj(:,:)
+    character(len=100) :: string   
     complex(dp) :: rho(2,2), i = complex(0,1)
+    real(dp) :: testgrid(10), R(2,2)
+    complex(dp) :: rho_reconst(2,2)
+    integer, allocatable :: bins(:)
+    complex(dp), allocatable :: proj(:,:)
     
+    allocate(Proj(NFock,NFock),bins(Nbins))
 
-   ! allocate(h_poly(ntrajs),current_store(ntrajs))
-    const = 1._dp/(sqrt(2._dp**n * factorial(n)) * (2._dp*pi)**0.25_dp )
+    dx = (2._dp*L)/Nbins
+
+    allocate(current_store(ntrajs))
+  
     seed = 123456789
 
     t_tot = nruns*dt ! total time
@@ -160,56 +240,97 @@ contains
     write(stdout,*) 'Time to integrate: ', nruns*dt-llim
 
     open(unit=4, file='current.dat', action="write")
+ 
+ open(unit=7, file='test.dat', action="write")
 
    ! call omp_set_nested(.true.)
+    call omp_set_num_threads(2)
 
-    do m=0,nangles-1
-       theta=m*dtheta
-       write(stdout,"(A2,A13,I3,A8,I3,A3,F25.10)") newline, "Angle number ", m+1, " out of ", nangles, " : ", theta
-  
+    R=0
+    do p=0,nangles-1
+       theta=p*dtheta
+       write(stdout,"(A2,A13,I3,A8,I3,A3,F25.10)") newline, "Angle number ", p+1, " out of ", nangles, " : ", theta
+      bins = 0
+
        do k=1,ntrajs
           rho = rhozero
-          current = 0
+          current = 0  
           t = 0
+
   !$OMP PARALLEL DO
           do j=1,nruns
              dW = r8_normal_01(seed)*sqrt(dt)
-             if (t .ge. llim) then
+             
+             if (t .ge. llim) then ! start integrating current after time
                 current = current + (sqrt(0.5_dp*gamma)*trace(matmul(cdagger*exp(i*theta)+&
 & c*exp(-i*theta),rho))*dt + dW)/sqrt(t_tot-llim)!*envelope(gamma,t_tot,t)!/sqrt(t_tot)
-             end if
-             if (isnan(current)) then
-                print *, 'Got Nan. '!  trace=',  trace(matmul(cdagger*exp(i*theta)+ c*exp(-i*theta),rho))*dt 
+             end if ! start integrating current after time
+
+             if (isnan(current)) then ! check if invalid value (NaN)
+                print *, 'Got Nan. '
                 call exit(1)
-             end if
-             if (mflag .eqv. .true.) then
+             end if ! end NaN
+            
+             if (mflag .eqv. .true.) then  ! if EM or Milstein
                 rho = rho + delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma)
              else            
                 rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta)
-             end if
+             end if !  EM or Milstein
              t = t + dt
-          end do
+          end do ! nruns
+
   !$OMP END PARALLEL DO
           write(stdout,"(2a,i4,$)") carriage_return,"Integrating current. Trajectory: ", k
           write(string,'(E25.15)') current
           write(4,'(A25)', advance='no') adjustl(string) 
-          !current_store(k) = current
-          end do
+          current_store(k) = current
+          
+          do q=1,Nbins ! bin current data 
+             if (current .le. -L+q*dx) then
+                bins(q) = bins(q) + 1
+                write(7, '(E22.7,A1,I25)') -L+q*dx, char(9),  bins(q)
+                exit
+             end if
+          end do ! binning
 
-     write(4,*) 
+       end do ! trajectories
+       write(4,*) 
+
+       do q=1,Nbins 
+          proj = tomography_projector(q,theta,dx,Nbins,NFock,L)
+          R = R + bins(q)*proj/trace(matmul(rho,proj))/nangles
+       end do
+    end do ! angles
+
+    close(4) ! current.dat
+
+    
+
+    close(7)
+
+    rho_reconst = identity_matrix(2)
+
+    do q=1,10000
+       rho_reconst = matmul(matmul(R,rho_reconst),R)
+       rho_reconst = rho_reconst/trace(rho_reconst)
     end do
 
-    close(4)
+    call print_matrix(rho_reconst)
 
-    !h_poly = evalHermitePoly(current_store/sqrt(2d0),n)
+    
+    !tomproj =  tomography_projector(1,0._dp,dx,Nbins,NFock,L)
+    !call print_matrix(tomproj)
+   
+   ! h_poly= wavefunction(1,current_store)
    ! open(unit=5, file='hermite.dat', action="write")
 
-   ! do j=1,ntrajs
-   !    write(5,'(E22.7,A1,E22.7)') current_store(j), char(9), &
-  !          &const*exp(-current_store(j)**2._dp/4._dp)*h_poly(j)
-  !  end do
+  !  do j=1,ntrajs
+  !     write(5,'(E22.7,A1,E22.7)') current_store(j), char(9),realpart(h_poly(j))**2
+   ! end do
 
-   ! close(5)
+   close(5)
+
+   
 
   end subroutine integrate_photocurrent
 
@@ -222,6 +343,19 @@ contains
 
     y = N*exp(-0.5_dp*gamma*t)
   end function envelope
+
+  pure function integrate(x, y) result(r)
+    !! Calculates the integral of an array y with respect to x using the trapezoid
+    !! approximation. Note that the mesh spacing of x does not have to be uniform.
+    real(dp), intent(in)  :: x(:)         !! Variable x
+    real(dp), intent(in)  :: y(size(x))   !! Function y(x)
+    real(dp)              :: r            !! Integral ∫y(x)·dx
+
+    ! Integrate using the trapezoidal rule
+    associate(n => size(x))
+    r = sum((y(1+1:n-0) + y(1+0:n-1))*(x(1+1:n-0) - x(1+0:n-1)))/2
+  end associate
+end function
 
   subroutine exact_solution(nruns, c, cdagger, dt ,filename, rhovec_zero, H)
     integer, intent(in) :: nruns
@@ -328,6 +462,29 @@ contains
        y(i,i) = 1 
     end do
   end function identity_matrix
+
+SUBROUTINE linspace(d1,d2,n,grid)
+
+IMPLICIT NONE
+
+INTEGER, INTENT(IN) :: n
+DOUBLE PRECISION, INTENT(IN) :: d1, d2
+DOUBLE PRECISION, DIMENSION(n), INTENT(OUT) :: grid
+
+INTEGER :: indxi
+
+
+grid(1) = d1
+DO indxi= 0,n-2
+   grid(indxi+1) = d1+(DBLE(indxi)*(d2-d1))/DBLE(n-1)
+END DO
+grid(n) = d2
+
+!MATLAB
+!grid = [d1+(0:n-2)*(d2-d1)/(floor(n)-1) d2];
+
+
+END SUBROUTINE
 
   function delta_rho(rho,H,c,cdagger,delta_t,dN) result(y)
     complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:), cdagger(:,:)

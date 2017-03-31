@@ -39,7 +39,7 @@ logical :: milstein = .false.
 
   ! H_traj =  w*sigma_z/2 
 
- H_traj = -i*sqrt(0.5_dp*gamma)*Omega*(sigma_plus-sigma_minus) !Omega*(sigma_plus + sigma_minus)/2
+ H_traj = 0!-i*sqrt(0.5_dp*gamma)*Omega*(sigma_plus-sigma_minus) !Omega*(sigma_plus + sigma_minus)/2
 
 call cpu_time(start)
 
