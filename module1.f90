@@ -83,7 +83,7 @@ contains
        format='(20G12.4)'
     end if
 
-    do i=1,size(matrix,1) 
+    do i=1,size(matrix,1)
        write(*,format) real(matrix(i,:))
     end do
 
@@ -112,7 +112,7 @@ contains
        format='(20G12.4)'
     end if
 
-    do i=1,size(matrix,1) 
+    do i=1,size(matrix,1)
        write(*,format) real(matrix(i,:))
     end do
 
@@ -216,111 +216,122 @@ contains
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
 
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
-    integer ::  seed, clock, k, j, p, q, n, m, NFock=2, Nbins=50, nangles=5
+    integer ::  seed, clock, k, j, p, q, n, m, NFock=2, Nbins=50, nangles=100
     real(dp) :: dW, current, t, t_tot, dx, L=5, dtheta, theta, llim=10
-    real(dp), allocatable :: current_store(:), h_poly(:), tomproj(:,:)
-    character(len=100) :: string   
-    complex(dp) :: rho(2,2), i = complex(0,1)
+    real(dp), allocatable :: current_store(:,:), h_poly(:), tomproj(:,:)
+    character(len=100) :: string
+    complex(dp) ::  i = complex(0,1)
     real(dp) :: testgrid(10), R(2,2)
     complex(dp) :: rho_reconst(2,2)
     integer, allocatable :: bins(:)
-    complex(dp), allocatable :: proj(:,:)
-    
-    allocate(Proj(NFock,NFock),bins(Nbins))
+    complex(dp), allocatable :: proj(:,:), rho(:,:,:)
+
+    allocate(Proj(NFock,NFock),bins(Nbins),rho(ntrajs,2,2))
 
     dx = (2._dp*L)/Nbins
 
-    allocate(current_store(ntrajs))
-  
+    allocate(current_store(nangles,ntrajs))
+
     seed = 123456789
 
     t_tot = nruns*dt ! total time
-    dtheta = pi/nangles
+    dtheta = pi/(nangles-1)
 
     write(stdout,*) 'Time to integrate: ', nruns*dt-llim
 
-    open(unit=4, file='current.dat', action="write")
- 
- open(unit=7, file='test.dat', action="write")
+
+
+ !open(unit=7, file='test.dat', action="write")
 
    ! call omp_set_nested(.true.)
-    call omp_set_num_threads(2)
 
     R=0
+    current_store=0
+      !$OMP PARALLEL DO ORDERED
     do p=0,nangles-1
        theta=p*dtheta
        write(stdout,"(A2,A13,I3,A8,I3,A3,F25.10)") newline, "Angle number ", p+1, " out of ", nangles, " : ", theta
       bins = 0
 
        do k=1,ntrajs
-          rho = rhozero
-          current = 0  
+          rho(k,:,:) = rhozero
+
           t = 0
 
-  !$OMP PARALLEL DO
+
           do j=1,nruns
              dW = r8_normal_01(seed)*sqrt(dt)
-             
+
              if (t .ge. llim) then ! start integrating current after time
-                current = current + (sqrt(0.5_dp*gamma)*trace(matmul(cdagger*exp(i*theta)+&
-& c*exp(-i*theta),rho))*dt + dW)/sqrt(t_tot-llim)!*envelope(gamma,t_tot,t)!/sqrt(t_tot)
+                current_store(p+1,k) = current_store(p+1,k) + (sqrt(0.5_dp*gamma)*trace(matmul(cdagger*exp(i*theta)+&
+& c*exp(-i*theta),rho(k,:,:)))*dt + dW)/sqrt(t_tot-llim)!*envelope(gamma,t_tot,t)!/sqrt(t_tot)
              end if ! start integrating current after time
 
              if (isnan(current)) then ! check if invalid value (NaN)
                 print *, 'Got Nan. '
                 call exit(1)
              end if ! end NaN
-            
+
              if (mflag .eqv. .true.) then  ! if EM or Milstein
-                rho = rho + delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma)
-             else            
-                rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta)
+                rho(k,:,:) = rho(k,:,:) + delta_rho_milstein(rho(k,:,:),c,cdagger,H,dt,dW,gamma)
+             else
+
+                rho(k,:,:) = rho(k,:,:) + delta_rho_homodyne(rho(k,:,:),H,c,dt,dW,gamma,theta)
+
              end if !  EM or Milstein
              t = t + dt
           end do ! nruns
 
-  !$OMP END PARALLEL DO
+
           write(stdout,"(2a,i4,$)") carriage_return,"Integrating current. Trajectory: ", k
-          write(string,'(E25.15)') current
-          write(4,'(A25)', advance='no') adjustl(string) 
-          current_store(k) = current
-          
-          do q=1,Nbins ! bin current data 
-             if (current .le. -L+q*dx) then
-                bins(q) = bins(q) + 1
-                write(7, '(E22.7,A1,I25)') -L+q*dx, char(9),  bins(q)
-                exit
-             end if
-          end do ! binning
+
+
+
+         ! do q=1,Nbins ! bin current data
+          !   if (current .le. -L+q*dx) then
+           !     bins(q) = bins(q) + 1
+            !    write(7, '(E22.7,A1,I25)') -L+q*dx, char(9),  bins(q)
+             !   exit
+            ! end if
+          !end do ! binning
 
        end do ! trajectories
-       write(4,*) 
 
-       do q=1,Nbins 
-          proj = tomography_projector(q,theta,dx,Nbins,NFock,L)
-          R = R + bins(q)*proj/trace(matmul(rho,proj))/nangles
-       end do
+
+       !do q=1,Nbins
+        !  proj = tomography_projector(q,theta,dx,Nbins,NFock,L)
+         ! R = R + bins(q)*proj/trace(matmul(rho,proj))/nangles
+       !end do
     end do ! angles
+ !$OMP END PARALLEL DO
 
+    open(unit=4, file='current.dat', action="write")
+    do p=1,nangles
+       do k=1,ntrajs
+          write(string,'(E25.15)') current_store(p,k)
+          write(4,'(A25)', advance='no') adjustl(string)
+       end do
+       write(4,*)
+    end do
     close(4) ! current.dat
 
-    
 
-    close(7)
 
-    rho_reconst = identity_matrix(2)
+  !  close(7)
 
-    do q=1,10000
-       rho_reconst = matmul(matmul(R,rho_reconst),R)
-       rho_reconst = rho_reconst/trace(rho_reconst)
-    end do
+   ! rho_reconst = identity_matrix(2)
 
-    call print_matrix(rho_reconst)
+    !do q=1,10000
+     !  rho_reconst = matmul(matmul(R,rho_reconst),R)
+      ! rho_reconst = rho_reconst/trace(rho_reconst)
+    !end do
 
-    
+    !call print_matrix(rho_reconst)
+
+
     !tomproj =  tomography_projector(1,0._dp,dx,Nbins,NFock,L)
     !call print_matrix(tomproj)
-   
+
    ! h_poly= wavefunction(1,current_store)
    ! open(unit=5, file='hermite.dat', action="write")
 
@@ -330,7 +341,7 @@ contains
 
    close(5)
 
-   
+
 
   end subroutine integrate_photocurrent
 
@@ -382,7 +393,7 @@ end function
   pure function trace(matrix) result(y)
     complex(dp), intent(in) :: matrix(:,:)
     real(dp) :: y
-    integer :: n 
+    integer :: n
     n = size(matrix,1)
     y = 0
 
@@ -394,7 +405,7 @@ end function
   function superH(r,rho) result(y)
 
     complex(dp), intent(in) :: r(:,:), rho(:,:)
-    complex(dp), allocatable ::y(:,:) 
+    complex(dp), allocatable ::y(:,:)
 
     integer :: n
     n=size(r,1)
@@ -407,7 +418,7 @@ end function
   pure function superG(r,rho) result(y)
 
     complex(dp), intent(in) :: r(:,:), rho(:,:)
-    complex(dp), allocatable ::y(:,:) 
+    complex(dp), allocatable ::y(:,:)
     real(dp) :: tracevalue
 
     integer :: n
@@ -428,7 +439,7 @@ end function
   pure function superD(c,rho) result(y)
 
     complex(dp), intent(in) :: c(:,:), rho(:,:)
-    complex(dp), allocatable ::y(:,:) 
+    complex(dp), allocatable ::y(:,:)
 
     complex(dp), allocatable :: cdagger(:,:)
     integer :: n
@@ -446,7 +457,7 @@ end function
   pure function dagger(matrix) result(y)
     complex(dp), intent(in) :: matrix(:,:)
     complex(dp), allocatable :: y(:,:)
-    integer :: n 
+    integer :: n
     n = size(matrix,1)
     allocate(y(n,n))
 
@@ -459,7 +470,7 @@ end function
 
     y = 0
     do i=1,n
-       y(i,i) = 1 
+       y(i,i) = 1
     end do
   end function identity_matrix
 
@@ -490,9 +501,9 @@ END SUBROUTINE
     complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:), cdagger(:,:)
     real(dp), intent(in) :: delta_t
     integer, intent(in) :: dN
-    complex(dp), allocatable ::y(:,:) 
+    complex(dp), allocatable ::y(:,:)
 
-    complex(dp) :: i 
+    complex(dp) :: i
     integer :: n
     i = complex(0,1)
     n = size(rho,1)
@@ -505,9 +516,9 @@ END SUBROUTINE
   function delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta) result(y)
     complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:)
     real(dp), intent(in) :: dt, dW, gamma, theta
-    complex(dp), allocatable ::y(:,:) 
+    complex(dp), allocatable ::y(:,:)
 
-    complex(dp) :: i 
+    complex(dp) :: i
     integer :: n
     i = complex(0,1)
     n = size(rho,1)
@@ -525,9 +536,9 @@ END SUBROUTINE
   function delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma) result(y)
     complex(dp), intent(in) :: rho(:,:), c(:,:), cdagger(:,:), H(:,:)
     real(dp), intent(in) :: dt, dW, gamma
-    complex(dp), allocatable ::y(:,:) 
+    complex(dp), allocatable ::y(:,:)
 
-    complex(dp) :: i 
+    complex(dp) :: i
 
     complex(dp), dimension(2,2) :: term1, term2
     integer :: n
@@ -549,7 +560,7 @@ END SUBROUTINE
     complex(dp) :: i = complex(0,1)
     complex(dp), dimension(2,2) :: identity
     complex(dp), allocatable :: y(:,:)
-    integer :: n 
+    integer :: n
     n = size(c,1)
     allocate(y(n**2,n**2))
 
@@ -574,7 +585,7 @@ END SUBROUTINE
           n=(i-1)*size(B,1) + 1
           m=n+size(B,1)
           p=(j-1)*size(B,2) + 1
-          q=p+size(B,2) 
+          q=p+size(B,2)
           y(n:m,p:q) = A(i,j)*B
        enddo
     enddo
@@ -613,7 +624,7 @@ END SUBROUTINE
 
     !-----Purpose----------------------------------------------------------|
     !
-    !     Computes exp(t*H), the matrix exponential of a general complex 
+    !     Computes exp(t*H), the matrix exponential of a general complex
     !     matrix in full, using the irreducible rational Pade approximation
     !     to the exponential exp(z) = r(z) = (+/-)( I + 2*(q(z)/p(z)) ),
     !     combined with scaling-and-squaring.
@@ -628,7 +639,7 @@ END SUBROUTINE
     !     H(ldh,m)  : (input) argument matrix.
     !
     !     t         : (input) time-scale (can be < 0).
-    !                  
+    !
     !     wsp(lwsp) : (workspace/output) lwsp .ge. 4*m*m+ideg+1.
     !
     !     ipiv(m)   : (workspace)
@@ -636,7 +647,7 @@ END SUBROUTINE
     !>>>> iexph     : (output) number such that wsp(iexph) points to exp(tH)
     !                 i.e., exp(tH) is located at wsp(iexph ... iexph+m*m-1)
     !                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    !                 NOTE: if the routine was called with wsp(iptr), 
+    !                 NOTE: if the routine was called with wsp(iptr),
     !                       then exp(tH) will start at wsp(iptr+iexph-1).
     !
     !     ns        : (output) number of scaling-squaring used.
@@ -673,7 +684,7 @@ END SUBROUTINE
     iq  = ip + mm
     ifree = iq + mm
     !
-    !---  scaling: seek ns such that ||t*H/2^ns|| < 1/2; 
+    !---  scaling: seek ns such that ||t*H/2^ns|| < 1/2;
     !     and set scale = t/2^ns ...
     !
     do i = 1,m
@@ -926,14 +937,14 @@ END SUBROUTINE
     REAL(dp), SAVE :: g
     LOGICAL, SAVE :: gaus_stored=.false.
 
-    integer:: n, clock 
+    integer:: n, clock
     integer, allocatable :: seed(:)
     CALL RANDOM_SEED(size = n)
     ALLOCATE(seed(n))
     CALL SYSTEM_CLOCK(COUNT=clock)
     call srand(45)
 
-    seed = clock + 37 * (/ (i - 1, i = 1, n) /) 
+    seed = clock + 37 * (/ (i - 1, i = 1, n) /)
     CALL RANDOM_SEED(PUT = seed)
 
 
@@ -941,7 +952,7 @@ END SUBROUTINE
     if (gaus_stored) then
        !  We have an extra deviate handy so return it, and unset the flag.
        harvest=g
-       gaus_stored=.false.     
+       gaus_stored=.false.
     else
        ! We don’t have an extra deviate handy, so pick two uniform numbers in the square extending from -1 to +1 in each direction,
        do
@@ -968,5 +979,3 @@ END SUBROUTINE
 
 
 end module module1
-
-
