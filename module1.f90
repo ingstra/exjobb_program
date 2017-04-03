@@ -26,11 +26,18 @@ contains
     return
   end function wavefunction
 
-  function tomography_projector(j,theta,dx,Nbins,NFock,L) result(y)
-    integer, intent(in) :: j, Nbins,NFock
+function frobenius_diff(A,B) result(y)
+  complex(dp), intent(in) :: A(:,:), B(:,:)
+  real(dp) :: y
+  y = sqrt(trace(matmul(dagger(A-B),A-B)))
+end function frobenius_diff
+
+  function tomography_projector(j,theta,dx,NFock,L) result(y)
+    integer, intent(in) :: j,NFock
     real(dp) , intent(in) :: theta, dx,L
 
-    integer:: m,n,p,nint
+    integer:: m,n,nint
+    complex(dp) ::  i = complex(0,1)
     complex(dp), allocatable :: y(:,:)
     real(dp), allocatable :: x(:),fcn1(:),fcn2(:),multfcn(:)
 
@@ -216,17 +223,18 @@ contains
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
 
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
-    integer ::  seed, clock, k, j, p, q, n, m, NFock=2, Nbins=50, nangles=100
-    real(dp) :: dW, current, t, t_tot, dx, L=5, dtheta, theta, llim=10
-    real(dp), allocatable :: current_store(:,:), h_poly(:), tomproj(:,:)
+    integer ::  seed, clock, k, j, p, q,count, NFock=2, Nbins=50, nangles=20
+    real(dp) :: dW,  t, t_tot, dx, L=5, dtheta, theta, llim=0
+    real(dp), allocatable :: current_store(:,:)
     character(len=100) :: string
     complex(dp) ::  i = complex(0,1)
-    real(dp) :: testgrid(10), R(2,2)
-    complex(dp) :: rho_reconst(2,2)
-    integer, allocatable :: bins(:)
-    complex(dp), allocatable :: proj(:,:), rho(:,:,:)
+    real(dp) :: epsilon=1e-4
+    integer, allocatable :: bins(:,:)
+    complex(dp), allocatable :: proj(:,:), rho(:,:,:), rho_reconst(:,:), tmp_reconst(:,:),&
+&R(:,:)
 
-    allocate(Proj(NFock,NFock),bins(Nbins),rho(ntrajs,2,2))
+    allocate(Proj(NFock,NFock),bins(nangles,Nbins),rho(nruns,2,2),rho_reconst(NFock,NFock),&
+&tmp_reconst(NFock,NFock),R(NFock,NFock))
 
     dx = (2._dp*L)/Nbins
 
@@ -235,23 +243,29 @@ contains
     seed = 123456789
 
     t_tot = nruns*dt ! total time
-    dtheta = pi/(nangles-1)
-
+    if (nangles .ne. 1) then
+       dtheta = pi/(nangles-1)
+    else
+       dtheta=0 !could be anything
+    end if
+    
     write(stdout,*) 'Time to integrate: ', nruns*dt-llim
 
 
 
- !open(unit=7, file='test.dat', action="write")
+ open(unit=7, file='test.dat', action="write")
 
-   ! call omp_set_nested(.true.)
+    call omp_set_nested(.true.)
 
-    R=0
     current_store=0
-      !$OMP PARALLEL DO ORDERED
+    count = 0
+    bins = 0
+   ! !$OMP PARALLEL DO private(p,k,j,q)
     do p=0,nangles-1
        theta=p*dtheta
-       write(stdout,"(A2,A13,I3,A8,I3,A3,F25.10)") newline, "Angle number ", p+1, " out of ", nangles, " : ", theta
-      bins = 0
+       count = count + 1
+       write(stdout,"(A2,A13,I3,A8,I3,A3,F25.10)") newline, "Angle number ",p+1, " out of ", nangles, " : ", theta
+      
 
        do k=1,ntrajs
           rho(k,:,:) = rhozero
@@ -259,15 +273,18 @@ contains
           t = 0
 
 
+!$OMP PARALLEL DO private(j, current_store,rho)
           do j=1,nruns
              dW = r8_normal_01(seed)*sqrt(dt)
 
-             if (t .ge. llim) then ! start integrating current after time
+           !  if (t .ge. llim) then ! start integrating current after time
+
                 current_store(p+1,k) = current_store(p+1,k) + (sqrt(0.5_dp*gamma)*trace(matmul(cdagger*exp(i*theta)+&
 & c*exp(-i*theta),rho(k,:,:)))*dt + dW)/sqrt(t_tot-llim)!*envelope(gamma,t_tot,t)!/sqrt(t_tot)
-             end if ! start integrating current after time
 
-             if (isnan(current)) then ! check if invalid value (NaN)
+            ! end if ! start integrating current after time
+
+             if (isnan(current_store(p+1,k))) then ! check if invalid value (NaN)
                 print *, 'Got Nan. '
                 call exit(1)
              end if ! end NaN
@@ -281,29 +298,53 @@ contains
              end if !  EM or Milstein
              t = t + dt
           end do ! nruns
-
-
+!$OMP END PARALLEL DO
           write(stdout,"(2a,i4,$)") carriage_return,"Integrating current. Trajectory: ", k
 
-
-
-         ! do q=1,Nbins ! bin current data
-          !   if (current .le. -L+q*dx) then
-           !     bins(q) = bins(q) + 1
-            !    write(7, '(E22.7,A1,I25)') -L+q*dx, char(9),  bins(q)
-             !   exit
-            ! end if
-          !end do ! binning
+     
+          do q=1,Nbins ! bin current data
+             if (current_store(p+1,k) .le. -L+q*dx) then
+                bins(p+1,q) = bins(p+1,q) + 1
+!                write(7, '(E22.7,A1,I25)') -L+q*dx, char(9),  bins(q)
+                exit
+             end if
+         end do ! binning
 
        end do ! trajectories
 
 
-       !do q=1,Nbins
-        !  proj = tomography_projector(q,theta,dx,Nbins,NFock,L)
-         ! R = R + bins(q)*proj/trace(matmul(rho,proj))/nangles
-       !end do
+      ! do q=1,Nbins
+      !    proj = tomography_projector(q,theta,dx,Nbins,NFock,L)      
+     ! end do ! projector
+
     end do ! angles
- !$OMP END PARALLEL DO
+ ! $OMP END PARALLEL DO
+    close(7)
+
+    rho_reconst = identity_matrix(NFock)/NFock
+    tmp_reconst=0
+
+    R=0
+    do while (.true.)
+       do q=1,Nbins
+          do p=1,nangles
+              theta=(p-1)*dtheta
+               proj = tomography_projector(q,theta,dx,NFock,L)   
+             R = R + bins(p,q)*proj/(trace(matmul(rho_reconst,proj))*nangles)
+          end do
+       end do
+       tmp_reconst = matmul(matmul(R,rho_reconst),R)
+       tmp_reconst = tmp_reconst/trace(tmp_reconst)
+      ! print *, frobenius_diff(rho_reconst,tmp_reconst)
+       if (frobenius_diff(rho_reconst,tmp_reconst) .lt. epsilon) then
+          exit
+       end if
+       rho_reconst = tmp_reconst
+     
+    end do
+print *, ""
+    call print_matrix(rho_reconst)
+
 
     open(unit=4, file='current.dat', action="write")
     do p=1,nangles
@@ -314,20 +355,6 @@ contains
        write(4,*)
     end do
     close(4) ! current.dat
-
-
-
-  !  close(7)
-
-   ! rho_reconst = identity_matrix(2)
-
-    !do q=1,10000
-     !  rho_reconst = matmul(matmul(R,rho_reconst),R)
-      ! rho_reconst = rho_reconst/trace(rho_reconst)
-    !end do
-
-    !call print_matrix(rho_reconst)
-
 
     !tomproj =  tomography_projector(1,0._dp,dx,Nbins,NFock,L)
     !call print_matrix(tomproj)
