@@ -5,19 +5,15 @@ module module1
 
 contains
 
-  function wavefunction(n,x) result(y)
+pure function wavefunction(n,x,arraysize) result(y)
 
     use hermite, only: evalHermitePoly
 
-    integer, intent(in) :: n
+    integer, intent(in) :: n, arraysize
     real(dp), intent(in) ::  x(:)
 
-    real(dp) :: const
-    real(dp), allocatable :: h_poly(:), y(:)
-    integer :: sizeX
-    sizeX = size(x)
-    allocate(h_poly(sizeX),y(sizeX))
-
+    real(dp) :: const, y(arraysize), h_poly(arraysize)
+ 
     const = 1._dp/(sqrt(2._dp**n * factorial(n)) * (2._dp*pi)**0.25_dp )
     !print *, const
     h_poly = evalHermitePoly(x/sqrt(2._dp),n)
@@ -32,24 +28,26 @@ function frobenius_diff(A,B) result(y)
   y = sqrt(trace(matmul(dagger(A-B),A-B)))
 end function frobenius_diff
 
-  function tomography_projector(j,theta,dx,NFock,L) result(y)
+pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
     integer, intent(in) :: j,NFock
-    real(dp) , intent(in) :: theta, dx,L
+    real(dp) , intent(in) :: theta, dx, L
+
+    complex(dp) :: y(NFock,NFock)
 
     integer:: m,n,nint
-    complex(dp) ::  i = complex(0,1)
-    complex(dp), allocatable :: y(:,:)
+    complex(dp) ::  i
     real(dp), allocatable :: x(:),fcn1(:),fcn2(:),multfcn(:)
-
+ 
+    i = complex(0,1)
     nint=10
-    allocate(y(NFock,NFock),x(nint),fcn1(nint),fcn2(nint),multfcn(nint))
+    allocate(x(nint),fcn1(nint),fcn2(nint),multfcn(nint))
 
     call linspace(-L+(j-1)*dx,-L+j*dx,nint,x)
 
     do m=0,NFock-1
        do n=0,NFock-1
-          fcn1 = wavefunction(n,x)
-          fcn2 = wavefunction(m,x)
+          fcn1 = wavefunction(n,x,nint)
+          fcn2 = wavefunction(m,x,nint)
           multfcn(1:nint) = fcn1(1:nint)*fcn2(1:nint)
           y(m+1,n+1) = exp(-i*(n-m)*theta)*integrate(x,multfcn)
        end do
@@ -223,18 +221,19 @@ end function frobenius_diff
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
 
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
-    integer ::  seed, clock, k, j, p, q,count, NFock=2, Nbins=50, nangles=20
-    real(dp) :: dW,  t, t_tot, dx, L=5, dtheta, theta, llim=0
-    real(dp), allocatable :: current_store(:,:)
+    integer ::  seed, clock, k, j, p, q,count, NFock=2, Nbins=20, nangles=5
+
+    real(dp) ::  t, t_tot, dx, L=5, dtheta, theta, llim=10
+    real(dp), allocatable :: current_store(:,:),current(:,:)
     character(len=100) :: string
     complex(dp) ::  i = complex(0,1)
-    real(dp) :: epsilon=1e-4
+    real(dp) :: epsilon=1e-4,dW
     integer, allocatable :: bins(:,:)
-    complex(dp), allocatable :: proj(:,:), rho(:,:,:), rho_reconst(:,:), tmp_reconst(:,:),&
+    complex(dp), allocatable :: proj(:,:), rho(:,:), rho_reconst(:,:), tmp_reconst(:,:),&
 &R(:,:)
 
-    allocate(Proj(NFock,NFock),bins(nangles,Nbins),rho(nruns,2,2),rho_reconst(NFock,NFock),&
-&tmp_reconst(NFock,NFock),R(NFock,NFock))
+    allocate(bins(nangles,Nbins),rho(2,2),rho_reconst(NFock,NFock),&
+&tmp_reconst(NFock,NFock),R(NFock,NFock),current(nangles,ntrajs),proj(NFock,NFock))
 
     dx = (2._dp*L)/Nbins
 
@@ -251,64 +250,48 @@ end function frobenius_diff
     
     write(stdout,*) 'Time to integrate: ', nruns*dt-llim
 
-
-
  open(unit=7, file='test.dat', action="write")
 
     call omp_set_nested(.true.)
 
-    current_store=0
+    current=0
     count = 0
     bins = 0
-   ! !$OMP PARALLEL DO private(p,k,j,q)
-    do p=0,nangles-1
-       theta=p*dtheta
+current=0
+
+    do p=1,nangles
+       theta=(p-1)*dtheta
        count = count + 1
-       write(stdout,"(A2,A13,I3,A8,I3,A3,F25.10)") newline, "Angle number ",p+1, " out of ", nangles, " : ", theta
-      
+       write(stdout,"(A2,A13,I3,A8,I3,A3,F25.10)") newline, "Angle number ",p, " out of ", nangles, " : ", theta
 
        do k=1,ntrajs
-          rho(k,:,:) = rhozero
-
+          rho = rhozero
           t = 0
 
-
-!$OMP PARALLEL DO private(j, current_store,rho)
           do j=1,nruns
+
              dW = r8_normal_01(seed)*sqrt(dt)
 
-           !  if (t .ge. llim) then ! start integrating current after time
+           if (t .ge. llim) then ! start integrating current after time
+ 
+                current(p,k) = current(p,k) + (sqrt(0.5_dp*gamma)*trace(matmul(cdagger*exp(i*theta)+&
+& c*exp(-i*theta),rho))*dt + dW)/sqrt(t_tot-llim)!*envelope(gamma,t_tot,t)!/sqrt(t_tot)
 
-                current_store(p+1,k) = current_store(p+1,k) + (sqrt(0.5_dp*gamma)*trace(matmul(cdagger*exp(i*theta)+&
-& c*exp(-i*theta),rho(k,:,:)))*dt + dW)/sqrt(t_tot-llim)!*envelope(gamma,t_tot,t)!/sqrt(t_tot)
+             end if ! start integrating current after time
 
-            ! end if ! start integrating current after time
-
-             if (isnan(current_store(p+1,k))) then ! check if invalid value (NaN)
+             if (isnan(current(p,k))) then ! check if invalid value (NaN)
                 print *, 'Got Nan. '
                 call exit(1)
              end if ! end NaN
 
              if (mflag .eqv. .true.) then  ! if EM or Milstein
-                rho(k,:,:) = rho(k,:,:) + delta_rho_milstein(rho(k,:,:),c,cdagger,H,dt,dW,gamma)
+                rho = rho + delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma)
              else
-
-                rho(k,:,:) = rho(k,:,:) + delta_rho_homodyne(rho(k,:,:),H,c,dt,dW,gamma,theta)
-
+                rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta)
              end if !  EM or Milstein
              t = t + dt
           end do ! nruns
-!$OMP END PARALLEL DO
           write(stdout,"(2a,i4,$)") carriage_return,"Integrating current. Trajectory: ", k
-
-     
-          do q=1,Nbins ! bin current data
-             if (current_store(p+1,k) .le. -L+q*dx) then
-                bins(p+1,q) = bins(p+1,q) + 1
-!                write(7, '(E22.7,A1,I25)') -L+q*dx, char(9),  bins(q)
-                exit
-             end if
-         end do ! binning
 
        end do ! trajectories
 
@@ -318,12 +301,23 @@ end function frobenius_diff
      ! end do ! projector
 
     end do ! angles
- ! $OMP END PARALLEL DO
+    do p=1,nangles
+       do k=1,ntrajs
+
+          do q=1,Nbins ! bin current data
+             if (current(p,k) .le. -L+q*dx) then
+                bins(p+1,q) = bins(p+1,q) + 1
+                !                write(7, '(E22.7,A1,I25)') -L+q*dx, char(9),  bins(q)
+                exit
+             end if
+          end do ! binning
+       end do
+    end do
+
     close(7)
 
     rho_reconst = identity_matrix(NFock)/NFock
     tmp_reconst=0
-
     R=0
     do while (.true.)
        do q=1,Nbins
@@ -349,12 +343,12 @@ print *, ""
     open(unit=4, file='current.dat', action="write")
     do p=1,nangles
        do k=1,ntrajs
-          write(string,'(E25.15)') current_store(p,k)
+          write(string,'(E25.15)') current(p,k)
           write(4,'(A25)', advance='no') adjustl(string)
        end do
        write(4,*)
     end do
-    close(4) ! current.dat
+   close(4) ! current.dat
 
     !tomproj =  tomography_projector(1,0._dp,dx,Nbins,NFock,L)
     !call print_matrix(tomproj)
@@ -501,7 +495,7 @@ end function
     end do
   end function identity_matrix
 
-SUBROUTINE linspace(d1,d2,n,grid)
+pure SUBROUTINE linspace(d1,d2,n,grid)
 
 IMPLICIT NONE
 
