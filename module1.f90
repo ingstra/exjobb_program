@@ -163,10 +163,10 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
   end subroutine direct_detection
 
 
-  subroutine homodyne_detection(nruns,ntrajs,dt,rhozero,c,cdagger,gamma,filename,H,mflag)
+  subroutine homodyne_detection(nruns,ntrajs,dt,rhozero,c,cdagger,gamma,filename,H,mflag,channels)
 
     use, intrinsic :: iso_fortran_env, only : stdout=>output_unit
-    integer, intent(in) :: nruns, ntrajs
+    integer, intent(in) :: nruns, ntrajs,channels
     logical, intent(in) :: mflag ! if true, use milstein scheme
     real(dp), intent(in) :: dt, gamma
     complex(dp), intent(in) :: rhozero(:,:), c(:,:),cdagger(:,:), H(:,:)
@@ -191,9 +191,9 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
           ! write(3, '(E22.7)') dW
           store(j) = store(j)+ trace(matmul(cdagger,c)*rho )
           if (mflag .eqv. .true.) then
-             rho = rho + delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma)
+             rho = rho + delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma,channels)
           else
-             rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma,0._dp)
+             rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma,0._dp,channels)
           end if
        end do
        write(stdout,"(2a,i10,$)") carriage_return,"Calculating trajectory: ", k
@@ -209,117 +209,91 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
 
   end subroutine homodyne_detection
 
-   subroutine integrate_photocurrent(nruns,ntrajs,dt,rhozero,c,cdagger,H,gamma,mflag)
+   subroutine reconstruct_state(nruns,ntrajs,dt,rhozero,c,cdagger,H,gamma,mflag,channels)
 
     use omp_lib
     use, intrinsic :: iso_fortran_env, only : stdout=>output_unit
     use hermite, only: evalHermitePoly
 
-    integer, intent(in) :: nruns,ntrajs
+    integer, intent(in) :: nruns,ntrajs,channels
     logical, intent(in) :: mflag ! if true, use milstein scheme
     real(dp), intent(in) :: dt, gamma
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
 
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
-    integer ::  seed, clock, k, j, p, q,count, NFock=2, Nbins=20, nangles=5
+    integer :: k, p, q,maxlik_count, NFock=3, Nbins=50, nangles=20
 
-    real(dp) ::  t, t_tot, dx, L=5, dtheta, theta, llim=10
+    real(dp) :: t_end, dx, L=5, dtheta, theta, t_start=10
     real(dp), allocatable :: current_store(:,:),current(:,:)
     character(len=100) :: string
-    complex(dp) ::  i = complex(0,1)
-    real(dp) :: epsilon=1e-4,dW
+    real(dp) :: epsilon=1e-4,diff, ompstart, ompend
     integer, allocatable :: bins(:,:)
     complex(dp), allocatable :: proj(:,:), rho(:,:), rho_reconst(:,:), tmp_reconst(:,:),&
 &R(:,:)
 
     allocate(bins(nangles,Nbins),rho(2,2),rho_reconst(NFock,NFock),&
-&tmp_reconst(NFock,NFock),R(NFock,NFock),current(nangles,ntrajs),proj(NFock,NFock))
+&tmp_reconst(NFock,NFock),R(NFock,NFock),current(ntrajs,nangles),proj(NFock,NFock))
 
     dx = (2._dp*L)/Nbins
 
     allocate(current_store(nangles,ntrajs))
 
-    seed = 123456789
-
-    t_tot = nruns*dt ! total time
+    t_end = nruns*dt ! total time
     if (nangles .ne. 1) then
        dtheta = pi/(nangles-1)
     else
        dtheta=0 !could be anything
     end if
     
-    write(stdout,*) 'Time to integrate: ', nruns*dt-llim
+    write(stdout,*) 'Time to integrate: ', nruns*dt-t_start
 
  open(unit=7, file='test.dat', action="write")
 
-    call omp_set_nested(.true.)
+    !call omp_set_nested(.true.)
 
-    current=0
-    count = 0
-    bins = 0
-current=0
+ current=0
+ bins = 0
+ current=0
+ diff = 0
+ompstart = omp_get_wtime()
 
     do p=1,nangles
        theta=(p-1)*dtheta
-       count = count + 1
        write(stdout,"(A2,A13,I3,A8,I3,A3,F25.10)") newline, "Angle number ",p, " out of ", nangles, " : ", theta
-
+       !$OMP PARALLEL DO private(k,q) schedule(static)
        do k=1,ntrajs
-          rho = rhozero
-          t = 0
 
-          do j=1,nruns
-
-             dW = r8_normal_01(seed)*sqrt(dt)
-
-           if (t .ge. llim) then ! start integrating current after time
- 
-                current(p,k) = current(p,k) + (sqrt(0.5_dp*gamma)*trace(matmul(cdagger*exp(i*theta)+&
-& c*exp(-i*theta),rho))*dt + dW)/sqrt(t_tot-llim)!*envelope(gamma,t_tot,t)!/sqrt(t_tot)
-
-             end if ! start integrating current after time
-
-             if (isnan(current(p,k))) then ! check if invalid value (NaN)
-                print *, 'Got Nan. '
-                call exit(1)
-             end if ! end NaN
-
-             if (mflag .eqv. .true.) then  ! if EM or Milstein
-                rho = rho + delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma)
-             else
-                rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta)
-             end if !  EM or Milstein
-             t = t + dt
-          end do ! nruns
+          current(k,p) = integrate_current(nruns,rhozero,gamma,c,cdagger,t_end,t_start,H,dt,theta,mflag,k,channels)
           write(stdout,"(2a,i4,$)") carriage_return,"Integrating current. Trajectory: ", k
 
-       end do ! trajectories
-
-
-      ! do q=1,Nbins
-      !    proj = tomography_projector(q,theta,dx,Nbins,NFock,L)      
-     ! end do ! projector
-
-    end do ! angles
-    do p=1,nangles
-       do k=1,ntrajs
-
           do q=1,Nbins ! bin current data
-             if (current(p,k) .le. -L+q*dx) then
-                bins(p+1,q) = bins(p+1,q) + 1
-                !                write(7, '(E22.7,A1,I25)') -L+q*dx, char(9),  bins(q)
+             if (current(k,p) .le. -L+q*dx) then
+                bins(p,q) = bins(p,q) + 1
+                if (p==1) then
+                   write(7, '(E22.7,A1,I25)') -L+q*dx, char(9),  bins(p,q)                      
+                end if
                 exit
              end if
           end do ! binning
-       end do
-    end do
+
+       end do ! trajectories
+       !$OMP END PARALLEL DO
+    end do ! angles
 
     close(7)
+
+    ompend = omp_get_wtime()
+    print*,
+    print '("Time = ",f10.3," seconds for current integration.")',ompend-ompstart
+
+   open(unit=8, file='frobenius.dat', action="write")
+          
 
     rho_reconst = identity_matrix(NFock)/NFock
     tmp_reconst=0
     R=0
-    do while (.true.)
+    maxlik_count = 0
+    do while (maxlik_count .lt. 1000) !(.true.)
        do q=1,Nbins
           do p=1,nangles
               theta=(p-1)*dtheta
@@ -327,23 +301,30 @@ current=0
              R = R + bins(p,q)*proj/(trace(matmul(rho_reconst,proj))*nangles)
           end do
        end do
+     write(stdout,"(2a,i4,$)") carriage_return,"Reconstructing. Iteration ", maxlik_count
        tmp_reconst = matmul(matmul(R,rho_reconst),R)
        tmp_reconst = tmp_reconst/trace(tmp_reconst)
-      ! print *, frobenius_diff(rho_reconst,tmp_reconst)
-       if (frobenius_diff(rho_reconst,tmp_reconst) .lt. epsilon) then
-          exit
-       end if
+       diff = frobenius_diff(rho_reconst,tmp_reconst)
+       !print *, frobenius_diff(rho_reconst,tmp_reconst)
+       !if (diff .lt. epsilon) then
+       !   exit
+       !end if
        rho_reconst = tmp_reconst
-     
+       maxlik_count = maxlik_count +1
+       write(8,'(I10,A1,F22.15)') maxlik_count, char(9), diff
     end do
 print *, ""
     call print_matrix(rho_reconst)
+    print *, 'Number of maxlik iterations', maxlik_count
+
+close(8)
+
 
 
     open(unit=4, file='current.dat', action="write")
     do p=1,nangles
        do k=1,ntrajs
-          write(string,'(E25.15)') current(p,k)
+          write(string,'(E25.15)') current(k,p)
           write(4,'(A25)', advance='no') adjustl(string)
        end do
        write(4,*)
@@ -362,18 +343,81 @@ print *, ""
 
    close(5)
 
+ end subroutine reconstruct_state
+
+ function integrate_current(nruns,rhozero,gamma,c,cdagger,t_end,t_start,H,dt,theta,mflag,seed,channels) result(y)
+    logical, intent(in) :: mflag ! if true, use milstein scheme
+    integer, intent(in) :: nruns,seed,channels
+    real(dp), intent(in) :: dt, gamma,t_end,t_start,theta
+    complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
+
+    real(dp) :: y,dW,t,current,const
+    complex(dp), dimension(2,2) :: rho
+    complex(dp) ::  i
+    integer :: trueseed,j
+
+    i = complex(0,1) 
+    trueseed = seed
+    t=0
+    rho = rhozero
 
 
-  end subroutine integrate_photocurrent
+    if (channels == 1) then
+       const = gamma
+    else
+       const = 0.5_dp*gamma
+    end if
+    
+    current=0
+    do j=1,nruns
 
-  function envelope(gamma,t_tot,t) result(y)
-    real(dp), intent(in) :: gamma, t_tot, t
-    real(dp) :: N,y
+       dW = r8_normal_01(trueseed)*sqrt(dt)
+
+       if (t .ge. t_start) then ! start integrating current after time
+
+          current = current + (sqrt(const)*trace(matmul(cdagger*exp(i*theta)+&
+               & c*exp(-i*theta),rho))*dt + dW)*envelope(gamma,t_start,t_end,t-t_start,channels)!/sqrt(t_end)
+
+       end if ! start integrating current after time
+
+       if (isnan(current)) then ! check if invalid value (NaN)
+          print *, 'Got Nan. '
+          call exit(1)
+       end if ! end NaN
+
+       if (mflag .eqv. .true.) then  ! if EM or Milstein
+          rho = rho + delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma,channels)
+       else
+          rho = rho + delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta,channels)
+       end if !  EM or Milstein
+       t = t + dt
+    end do ! nruns
+    y=current
+ 
+
+  end function integrate_current
+
+
+  function envelope(gamma,t_start,t_end,t,channels) result(y)
+    real(dp), intent(in) :: gamma, t_end, t_start, t
+    integer, intent(in) :: channels
+    real(dp) :: N,y,const,gamma1
+    
+     if (channels == 1) then
+       const = gamma
+    else
+       const = 0.5_dp*gamma
+    end if
 
     ! Normalization factor
-    N = sqrt(gamma/(1._dp-exp(-gamma*t_tot)))
+    !N = sqrt(gamma/(1._dp-exp(-const*t_end)))
 
-    y = N*exp(-0.5_dp*gamma*t)
+    !y = N*exp(-0.5_dp*const*t)
+    gamma1=0.5
+
+    !N = sqrt(gamma1/(exp(-gamma1*t_start) - exp(-gamma1*t_end)))
+    N= sqrt(gamma1/(1._dp-exp(-gamma1*(t_end-t_start))))
+    y = N*exp(-0.5_dp*gamma1*t)
   end function envelope
 
   pure function integrate(x, y) result(r)
@@ -534,19 +578,28 @@ END SUBROUTINE
 
   end function delta_rho
 
-  function delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta) result(y)
+  function delta_rho_homodyne(rho,H,c,dt,dW,gamma,theta,channels) result(y)
     complex(dp), intent(in) :: rho(:,:), H(:,:), c(:,:)
     real(dp), intent(in) :: dt, dW, gamma, theta
+    integer, intent(in) :: channels
     complex(dp), allocatable ::y(:,:)
+
 
     complex(dp) :: i
     integer :: n
+    real(dp) :: const
     i = complex(0,1)
     n = size(rho,1)
     allocate(y(n,n))
 
+      if (channels == 1) then
+       const = gamma
+    else
+       const = 0.5_dp*gamma
+    end if
+
     y = -i*(matmul(H,rho)-matmul(rho,H))*dt + gamma*superD(c,rho)*dt +&
-& sqrt(0.5_dp*gamma)*superH(c*exp(-i*theta),rho)*dW
+& sqrt(const)*superH(c*exp(-i*theta),rho)*dW
 
     if (isnan(trace(y))) then
        call print_matrix(rho)
@@ -554,11 +607,13 @@ END SUBROUTINE
     end if
   end function delta_rho_homodyne
 
-  function delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma) result(y)
+  function delta_rho_milstein(rho,c,cdagger,H,dt,dW,gamma,channels) result(y)
     complex(dp), intent(in) :: rho(:,:), c(:,:), cdagger(:,:), H(:,:)
     real(dp), intent(in) :: dt, dW, gamma
+    integer, intent(in) :: channels
     complex(dp), allocatable ::y(:,:)
 
+    real(dp) :: const
     complex(dp) :: i
 
     complex(dp), dimension(2,2) :: term1, term2
@@ -567,12 +622,19 @@ END SUBROUTINE
     n = size(rho,1)
     allocate(y(n,n))
 
+     if (channels == 1) then
+       const = gamma
+    else
+       const = 0.5_dp*gamma
+    end if
+
+
     term1 = matmul(c,c)*rho + 2._dp*matmul(c,rho)*cdagger + matmul(rho,cdagger)*cdagger
     term2 = matmul(c,rho) + matmul(rho,cdagger)
 
     y = -i*(matmul(H,rho)-matmul(rho,H))*dt + gamma*superD(c,rho)*dt + &
-& sqrt(0.5_dp*gamma)*superH(c,rho)*dW + (0.5_dp*gamma*term1-gamma*trace(term1) + &
-& 2._dp*sqrt(0.5_dp*gamma)*trace(term2)*(trace(term2)*rho-term2))*(dW**2._dp-dt)/2._dp
+& sqrt(const)*superH(c,rho)*dW + (const*term1-gamma*trace(term1) + &
+& 2._dp*sqrt(const)*trace(term2)*(trace(term2)*rho-term2))*(dW**2._dp-dt)/2._dp
 
   end function delta_rho_milstein
 
