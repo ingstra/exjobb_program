@@ -28,6 +28,13 @@ function frobenius_diff(A,B) result(y)
   y = sqrt(trace(matmul(dagger(A-B),A-B)))
 end function frobenius_diff
 
+
+function hilbert_schmidt_diff(A,B) result(y)
+  complex(dp), intent(in) :: A(:,:), B(:,:)
+  real(dp) :: y
+  y = trace(matmul(A-B,A-B))
+end function hilbert_schmidt_diff
+
 pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
     integer, intent(in) :: j,NFock
     real(dp) , intent(in) :: theta, dx, L
@@ -118,7 +125,7 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
     end if
 
     do i=1,size(matrix,1)
-       write(*,format) real(matrix(i,:))
+       write(*,format) matrix(i,:)
     end do
 
   end subroutine print_matrix
@@ -221,12 +228,12 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
 
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
-    integer :: k, p, q,maxlik_count, NFock=3, Nbins=50, nangles=20
+    integer :: k, p, q,maxlik_count, NFock=2, Nbins=100, nangles=20
 
-    real(dp) :: t_end, dx, L=5, dtheta, theta, t_start=10
+    real(dp) :: t_end, dx, L=5, dtheta, theta, t_start=0
     real(dp), allocatable :: current_store(:,:),current(:,:)
     character(len=100) :: string
-    real(dp) :: epsilon=1e-4,diff, ompstart, ompend
+    real(dp) :: epsilon=1e-3,diff, ompstart, ompend
     integer, allocatable :: bins(:,:)
     complex(dp), allocatable :: proj(:,:), rho(:,:), rho_reconst(:,:), tmp_reconst(:,:),&
 &R(:,:)
@@ -239,13 +246,14 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
     allocate(current_store(nangles,ntrajs))
 
     t_end = nruns*dt ! total time
+
     if (nangles .ne. 1) then
        dtheta = pi/(nangles-1)
     else
-       dtheta=0 !could be anything
+       dtheta=0 
     end if
     
-    write(stdout,*) 'Time to integrate: ', nruns*dt-t_start
+    write(stdout,*) 'Time to integrate: ', t_end-t_start
 
  open(unit=7, file='test.dat', action="write")
 
@@ -293,7 +301,7 @@ ompstart = omp_get_wtime()
     tmp_reconst=0
     R=0
     maxlik_count = 0
-    do while (maxlik_count .lt. 1000) !(.true.)
+    do while (.true.)!(maxlik_count .lt. 3) !(.true.)
        do q=1,Nbins
           do p=1,nangles
               theta=(p-1)*dtheta
@@ -306,18 +314,27 @@ ompstart = omp_get_wtime()
        tmp_reconst = tmp_reconst/trace(tmp_reconst)
        diff = frobenius_diff(rho_reconst,tmp_reconst)
        !print *, frobenius_diff(rho_reconst,tmp_reconst)
-       !if (diff .lt. epsilon) then
-       !   exit
-       !end if
+       if (diff .lt. epsilon) then
+          exit
+       end if
        rho_reconst = tmp_reconst
        maxlik_count = maxlik_count +1
        write(8,'(I10,A1,F22.15)') maxlik_count, char(9), diff
     end do
 print *, ""
-    call print_matrix(rho_reconst)
+    call print_matrix_real(real(rho_reconst))
     print *, 'Number of maxlik iterations', maxlik_count
 
 close(8)
+
+open(unit=9, file='rho.dat', action="write")
+
+ 
+ do p=1,NFock
+    write(9,'(20G20.12)') real(rho_reconst(p,:))
+ end do
+
+close(9)
 
 
 
@@ -330,20 +347,10 @@ close(8)
        write(4,*)
     end do
    close(4) ! current.dat
-
-    !tomproj =  tomography_projector(1,0._dp,dx,Nbins,NFock,L)
-    !call print_matrix(tomproj)
-
-   ! h_poly= wavefunction(1,current_store)
-   ! open(unit=5, file='hermite.dat', action="write")
-
-  !  do j=1,ntrajs
-  !     write(5,'(E22.7,A1,E22.7)') current_store(j), char(9),realpart(h_poly(j))**2
-   ! end do
-
    close(5)
 
  end subroutine reconstruct_state
+
 
  function integrate_current(nruns,rhozero,gamma,c,cdagger,t_end,t_start,H,dt,theta,mflag,seed,channels) result(y)
     logical, intent(in) :: mflag ! if true, use milstein scheme
@@ -376,7 +383,7 @@ close(8)
        if (t .ge. t_start) then ! start integrating current after time
 
           current = current + (sqrt(const)*trace(matmul(cdagger*exp(i*theta)+&
-               & c*exp(-i*theta),rho))*dt + dW)*envelope(gamma,t_start,t_end,t-t_start,channels)!/sqrt(t_end)
+               & c*exp(-i*theta),rho))*dt + dW)*envelope(gamma,t_start,t_end,t,channels)!/sqrt(t_end-t_start)
 
        end if ! start integrating current after time
 
@@ -410,14 +417,14 @@ close(8)
     end if
 
     ! Normalization factor
-    !N = sqrt(gamma/(1._dp-exp(-const*t_end)))
+  !  N = sqrt(gamma/(1._dp-exp(-gamma*t_end)))
 
-    !y = N*exp(-0.5_dp*const*t)
-    gamma1=0.5
+   ! y = N*exp(-0.5_dp*gamma*t)
+    gamma1=gamma!0.5
 
     !N = sqrt(gamma1/(exp(-gamma1*t_start) - exp(-gamma1*t_end)))
     N= sqrt(gamma1/(1._dp-exp(-gamma1*(t_end-t_start))))
-    y = N*exp(-0.5_dp*gamma1*t)
+    y = N*exp(-0.5_dp*gamma1*(t-t_start))
   end function envelope
 
   pure function integrate(x, y) result(r)
