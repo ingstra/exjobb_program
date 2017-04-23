@@ -12,7 +12,7 @@ current = np.loadtxt('current.dat')
 nangles = len(current)
 
 
-hist=[ np.histogram(current[i],20,normed=1) for i in range(0,nangles)]
+hist=[ np.histogram(current[i],50,normed=1) for i in range(0,nangles)]
 
 values = [hist[i][0] for i in range(0,nangles)]
 

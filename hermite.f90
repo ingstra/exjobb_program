@@ -3,8 +3,8 @@ MODULE hermite
  integer, parameter :: dp = selected_real_kind(15, 307)
 
 CONTAINS
- RECURSIVE FUNCTION HermitePoly(n) RESULT(hp)
-
+ RECURSIVE PURE FUNCTION HermitePoly(n) RESULT(hp)
+integer, intent(in) :: n
 !
 ! More info
 ! http://mathworld.wolfram.com/HermitePolynomial.html
@@ -35,9 +35,11 @@ CONTAINS
 
       END FUNCTION
 
-      FUNCTION evalHermitePoly(ix,n) RESULT(y)
-      INTEGER n,ip
-      REAL(dp) ix(:),y(size(ix)),h(n+1)
+  pure FUNCTION evalHermitePoly(ix,n) RESULT(y)
+      INTEGER, intent(in) :: n
+      integer :: ip
+      REAL(dp), intent(in) :: ix(:)
+      REAL(dp) :: y(size(ix)),h(n+1)
 
       k=size(ix)
 

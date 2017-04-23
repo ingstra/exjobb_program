@@ -7,7 +7,7 @@ from scipy.stats import norm
 from scipy.misc import factorial
 import sympy.mpmath as mp
 
-current = np.loadtxt('current2.dat')
+current = np.loadtxt('current.dat')
 h =  np.loadtxt('hermite.dat')
 
 dt = 1e-3
@@ -19,15 +19,15 @@ mu = 0
 variance = dt*nruns
 sigma = np.sqrt(variance)
 
-values, bins, _ = plt.hist(current,50,normed=1,histtype='bar')
+values, bins, _ = plt.hist(current,5,normed=0,histtype='bar')
 area = sum(np.diff(bins)*values)
-print area
+#print bins
 
 #mufit, stdfit = norm.fit(current)
 #print 'fitted mean: ',mufit #, 'calculated mean: '
 #print 'fitted std: ',stdfit #,'calculated std: ',sigma
 
-#plt.plot(h[:,0],h[:,1]**2,'.')
+plt.plot(h[:,0],h[:,1],'b.')
 
 range = 5
 x= np.linspace(-range,range,len(h[:,0]))

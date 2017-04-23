@@ -25,9 +25,8 @@ sigma = np.sqrt(variance)
 
 
 plt.plot(traj[:,0],traj[:,1])
-plt.plot(exact[:,0],exact[:,1],'g--')
+plt.plot(exact[:,0],exact[:,1],'g')
 
-#plt.plot(traj[:,0],np.exp(-gamma*traj[:,0]),'r:')
 
 #plt.plot(trace[:,0],trace[:,1])
 

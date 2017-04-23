@@ -30,7 +30,8 @@ print area
 #plt.plot(h[:,0],h[:,1]**2,'.')
 
 range = 5
-x= np.linspace(-range,range,len(h[:,0]))
+
+x= np.linspace(-range,range,100)
 
 n=1
 h_poly = np.frompyfunc(mp.hermite,2,1)
@@ -45,7 +46,7 @@ rest0 = const0* np.exp(-x**2/4)
 tot0  = (rest0*h_poly(n,x/np.sqrt(2)))**2
 
 
-plt.plot(x,(tot0+tot1)/2,'r-')
+plt.plot(x,tot1,'r-')
 
 
 

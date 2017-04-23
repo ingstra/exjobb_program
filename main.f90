@@ -14,22 +14,28 @@ program main
   complex(dp) :: i = complex(0,1),rhovec_zero(4)
  
   real(dp), parameter ::  dt = 1e-3
-  real(dp) ::  gamma, Omega, w, start, finish, ompstart, ompend
+  real(dp) ::  gamma, Omega, w, start, finish, ompstart, ompend, const
  
-  integer ::  channels, nruns = 6000, ntrajs = 500
+  integer ::  channels, nruns = 13000, ntrajs = 500
 !logical :: milstein = .true.
 logical :: milstein = .false.
 
   sigma_plus = reshape ( (/ 0,0,1,0/),(/2,2/) )
   sigma_minus = reshape ( (/ 0,1,0,0/),(/2,2/) )
   sigma_z = reshape ( (/ 1,0,0,-1/),(/2,2/) )
-  rhozero = reshape ( (/1,0,0,0/),(/2,2/) )
+  rhozero = reshape ( (/0,0,0,1/),(/2,2/) )
   rhovec_zero = (/0,0,0,1/)
 
    gamma = 1
-   Omega = 5
+   Omega = 0.5
    w = 1
    channels = 1
+
+   if (channels == 1) then
+       const = gamma
+    else
+       const = 0.5_dp*gamma
+    end if
 
    
 
@@ -40,7 +46,7 @@ logical :: milstein = .false.
 
   ! H_traj =  w*sigma_z/2 
 
- H_traj = 0!-i*sqrt(0.5_dp*gamma)*Omega*(sigma_plus-sigma_minus) !Omega*(sigma_plus + sigma_minus)/2
+ H_traj = -i*sqrt(const)*Omega*(sigma_plus-sigma_minus) !Omega*(sigma_plus + sigma_minus)/2
 
 call cpu_time(start)
 

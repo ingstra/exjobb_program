@@ -228,9 +228,9 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
 
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
-    integer :: k, p, q,maxlik_count, NFock=2, Nbins=100, nangles=20
+    integer :: k, p, q,maxlik_count, NFock=4, Nbins=100, nangles=20
 
-    real(dp) :: t_end, dx, L=5, dtheta, theta, t_start=0
+    real(dp) :: t_end, dx, L=5, dtheta, theta, t_start=10
     real(dp), allocatable :: current_store(:,:),current(:,:)
     character(len=100) :: string
     real(dp) :: epsilon=1e-3,diff, ompstart, ompend
@@ -327,14 +327,17 @@ print *, ""
 
 close(8)
 
-open(unit=9, file='rho.dat', action="write")
+open(unit=9, file='rho_real.dat', action="write")
+open(unit=10, file='rho_im.dat', action="write")
 
  
  do p=1,NFock
     write(9,'(20G20.12)') real(rho_reconst(p,:))
+    write(10,'(20G20.12)') aimag(rho_reconst(p,:))
  end do
 
 close(9)
+close(10)
 
 
 
@@ -383,7 +386,7 @@ close(9)
        if (t .ge. t_start) then ! start integrating current after time
 
           current = current + (sqrt(const)*trace(matmul(cdagger*exp(i*theta)+&
-               & c*exp(-i*theta),rho))*dt + dW)*envelope(gamma,t_start,t_end,t,channels)!/sqrt(t_end-t_start)
+               & c*exp(-i*theta),rho))*dt + dW)/sqrt(t_end-t_start)!*envelope(gamma,t_start,t_end,t,channels)!/sqrt(t_end-t_start)
 
        end if ! start integrating current after time
 
