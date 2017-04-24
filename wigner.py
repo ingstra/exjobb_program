@@ -72,11 +72,15 @@ plt.tight_layout()
 
 rhoq = Qobj(rho)
 
+
 #xvec = np.linspace(-5,5,200)
-#W = wigner(rhoq, xvec, xvec)
+#W = wigner(rhoq, x, p)
 
 ax1 = fig.add_subplot(111)
 #cont0 = ax1.contourf(xvec, xvec, W, 100)
+
+#wmap = wigner_cmap(W) 
+#plt2 = ax1.contourf(x, p, W, 100, cmap=wmap)
 
 nrm = mlp.colors.Normalize(-W.max(), W.max())
 plt1 = ax1.contourf(x, p, W, 100, cmap=cm.RdBu, norm=nrm)
