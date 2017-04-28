@@ -15,8 +15,6 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 from qutip import *
 
-from wigner_cmap import w_cmap
-
 
 rho_real = np.loadtxt('rho_real.dat')
 rho_im = np.loadtxt('rho_im.dat')
@@ -54,6 +52,10 @@ print rho
 W=wigner_calc(X,P)
 
 fig = plt.figure()
+#ax = fig.add_subplot(111, projection='3d')
+
+#surf = ax.plot_surface(X, P, np.real(W),cmap=cm.coolwarm)
+
 
 plt.xlabel(r'$x$')
 plt.ylabel(r'$p$')
@@ -61,8 +63,12 @@ plt.ylabel(r'$p$')
 
 
 print integrate.nquad(wigner_calc,[[-6,6],[-6,6]])
+#print integrate.dblquad(wigner,-6,6, lambda x: -6, lambda x: 6)
 
 plt.tight_layout()
+#fig.colorbar(surf, shrink=0.7)
+
+#plt.savefig('vacuumplot.png',figsize=(1,1))
 
 rhoq = Qobj(rho)
 
@@ -71,13 +77,14 @@ rhoq = Qobj(rho)
 #W = wigner(rhoq, x, p)
 
 ax1 = fig.add_subplot(111)
+#cont0 = ax1.contourf(xvec, xvec, W, 100)
 
+#wmap = wigner_cmap(W) 
+#plt2 = ax1.contourf(x, p, W, 100, cmap=wmap)
 
-wcmap = w_cmap(W,shift=0)
-
-plt1 = ax1.contourf(x, p, W, 100, cmap=wcmap)
+nrm = mlp.colors.Normalize(-W.max(), W.max())
+plt1 = ax1.contourf(x, p, W, 100, cmap=cm.RdBu, norm=nrm)
 cb1 = fig.colorbar(plt1, ax=ax1)
-
 
 plt.show()
 

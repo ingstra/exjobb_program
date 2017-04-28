@@ -2,7 +2,6 @@ from __future__ import division
 
 import matplotlib.pylab as plt
 import matplotlib.mlab as mlab
-import matplotlib as mlp
 import numpy as np
 from matplotlib import cm
 from scipy.stats import norm
@@ -10,12 +9,12 @@ from scipy.misc import factorial
 from scipy.special import eval_genlaguerre as L
 from scipy.special import eval_laguerre as lag
 from scipy import integrate
-import sympy.mpmath as mp
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 from qutip import *
 
 from wigner_cmap import w_cmap
+
 
 
 rho_real = np.loadtxt('rho_real.dat')
@@ -53,30 +52,17 @@ print rho
 
 W=wigner_calc(X,P)
 
+wcmap=w_cmap(W,shift=0)
 fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+surf = ax.plot_surface(X, P, np.real(W),cmap=wcmap)
+plt.tight_layout()
+
+fig.colorbar(surf, shrink=0.7)
 
 plt.xlabel(r'$x$')
 plt.ylabel(r'$p$')
-#plt.title(r'$N=1$ Fock state')
 
-
-print integrate.nquad(wigner_calc,[[-6,6],[-6,6]])
-
-plt.tight_layout()
-
-rhoq = Qobj(rho)
-
-
-#xvec = np.linspace(-5,5,200)
-#W = wigner(rhoq, x, p)
-
-ax1 = fig.add_subplot(111)
-
-
-wcmap = w_cmap(W,shift=0)
-
-plt1 = ax1.contourf(x, p, W, 100, cmap=wcmap)
-cb1 = fig.colorbar(plt1, ax=ax1)
 
 
 plt.show()

@@ -10,13 +10,13 @@ program main
  
   implicit none
 
-  complex(dp), dimension(2,2) :: sigma_z, sigma_plus, sigma_minus, rhozero, H, H_traj
+  complex(dp), dimension(2,2) :: sigma_z, sigma_plus, sigma_minus, rhozero, H, H_traj, L1, L2, L3
   complex(dp) :: i = complex(0,1),rhovec_zero(4)
  
   real(dp), parameter ::  dt = 1e-3
-  real(dp) ::  gamma, Omega, w, start, finish, ompstart, ompend, const
+  real(dp) ::  gamma, Omega, w, start, finish, ompstart, ompend, const, gamma1, gamma2, gamma3
  
-  integer ::  channels, nruns = 13000, ntrajs = 500
+  integer ::  channels, nruns = 1500, ntrajs = 500
 !logical :: milstein = .true.
 logical :: milstein = .false.
 
@@ -27,7 +27,7 @@ logical :: milstein = .false.
   rhovec_zero = (/0,0,0,1/)
 
    gamma = 1
-   Omega = 0.5
+   Omega = 5
    w = 1
    channels = 1
 
@@ -40,7 +40,7 @@ logical :: milstein = .false.
    
 
    ! resonant fluorescence
-   H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 + Omega*(sigma_plus + sigma_minus)/2
+   !H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 + Omega*(sigma_plus + sigma_minus)/2
    
   ! H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 -i*sqrt(0.5_dp*gamma)*Omega*(sigma_plus-sigma_minus) ! + Omega*(sigma_plus + sigma_minus)/2
 

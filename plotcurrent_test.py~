@@ -8,9 +8,10 @@ from scipy.misc import factorial
 import sympy.mpmath as mp
 
 current = np.loadtxt('current.dat')
+h =  np.loadtxt('test.dat')
 
 dt = 1e-3
-nruns = 1300
+nruns = 10000
 
 gamma = 2
 
@@ -18,30 +19,37 @@ mu = 0
 variance = dt*nruns
 sigma = np.sqrt(variance)
 
-values, bins, _ = plt.hist(current,50,normed=1,histtype='bar')
-area = sum(np.diff(bins)*values)
+###plt.hist(data, bins=np.arange(min(data), max(data) + binwidth, binwidth))
+# values, bins, _ = plt.hist(current,10,normed=0,histtype='bar')
+
+N=5
+L=5
+dx=2*L/N
+plt.hist(current, bins=[-L, -L+dx, -L+2*dx, -L+3*dx, -L+4*dx, L])
+#plt.hist(current,bins=np.arange(-3.8, L + binwidth, binwidth))
+
+#area = sum(np.diff(bins)*values)
 #print bins
 
-mufit, stdfit = norm.fit(current)
+#mufit, stdfit = norm.fit(current)
 #print 'fitted mean: ',mufit #, 'calculated mean: '
-print 'fitted var: ',stdfit**2 ,'calculated var: ',variance
+#print 'fitted std: ',stdfit #,'calculated std: ',sigma
 
+plt.plot(h[:,0],h[:,1],'*')
 
 range = 5
-x= np.linspace(-range,range,100)
+x= np.linspace(-range,range,len(h[:,0]))
 
-n=0
+n=1
 h_poly = np.frompyfunc(mp.hermite,2,1)
 
 const = 1/(np.sqrt(2**n * factorial(n)) * (2*np.pi)**0.25 )
 rest = const* np.exp(-x**2/4)
 tot  = (rest*h_poly(n,x/np.sqrt(2)))**2
-plt.plot(x,tot,'r-')
+#plt.plot(x,tot,'r-')
 
-#print np.trapz(tot,x)
-sigma = 0.66
-s = np.random.normal(0, sigma, 1000)
-plt.hist(s,bins=50,normed=1)
+print np.trapz(tot,x)
+
 
 
 #plt.plot(traj[:,0],traj[:,1])

@@ -1,0 +1,18 @@
+import numpy as np
+
+
+x=np.linspace(-100,100,5)
+
+
+def psi1(x,n)
+	return 1/(2^n*factorial(n))*1/sqrt(2*pi)*exp(-x.^2/2).*hermitepoly(n,x./sqrt(2))^2;
+
+
+def retval = psi2(x,n)
+	return 1/(2^n*factorial(n))*1/sqrt(pi)*exp(-x.^2).*hermitepoly(n,x)^2;
+
+
+
+
+
+

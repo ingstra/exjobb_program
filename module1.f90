@@ -14,11 +14,11 @@ pure function wavefunction(n,x,arraysize) result(y)
 
     real(dp) :: const, y(arraysize), h_poly(arraysize)
  
-    const = 1._dp/(sqrt(2._dp**n * factorial(n)) * (2._dp*pi)**0.25_dp )
+    const = 1._dp/(sqrt(2._dp**n * factorial(n)) * (pi)**0.25_dp )
     !print *, const
-    h_poly = evalHermitePoly(x/sqrt(2._dp),n)
+    h_poly = evalHermitePoly(x,n)
 
-    y = const*exp(-x**2._dp/4._dp)*h_poly
+    y = const*exp(-x**2._dp/2._dp)*h_poly
     return
   end function wavefunction
 
@@ -230,7 +230,7 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
     integer :: k, p, q,maxlik_count, NFock=4, Nbins=100, nangles=20
 
-    real(dp) :: t_end, dx, L=5, dtheta, theta, t_start=10
+    real(dp) :: t_end, dx, L=5, dtheta, theta, t_start=1
     real(dp), allocatable :: current_store(:,:),current(:,:)
     character(len=100) :: string
     real(dp) :: epsilon=1e-3,diff, ompstart, ompend
@@ -386,7 +386,7 @@ close(10)
        if (t .ge. t_start) then ! start integrating current after time
 
           current = current + (sqrt(const)*trace(matmul(cdagger*exp(i*theta)+&
-               & c*exp(-i*theta),rho))*dt + dW)/sqrt(t_end-t_start)!*envelope(gamma,t_start,t_end,t,channels)!/sqrt(t_end-t_start)
+               & c*exp(-i*theta),rho))*dt + dW)/sqrt(2._dp*(t_end-t_start))!*envelope(gamma,t_start,t_end,t,channels)!/sqrt(t_end-t_start)
 
        end if ! start integrating current after time
 
