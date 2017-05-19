@@ -18,19 +18,20 @@ from qutip import *
 from wigner_cmap import w_cmap
 
 
-rho_real = np.loadtxt('rho_real.dat')
-rho_im = np.loadtxt('rho_im.dat')
+rho_real = np.loadtxt('testre')
+rho_im = np.loadtxt('testim')
 
 rho = rho_real + 1j*rho_im
 
-#rho=np.array([[1, 0],[0,0]])
+rho=np.array([[0, 0],[0,1]])
 NFock = len(rho)
 
 x=np.linspace(-3,3,500)
 p=x
 
 X, P = np.meshgrid(x,p)
-
+dx=x[1]-x[0]
+dp=dx
 laguerre = np.vectorize(L)
 
 def W_mn(x,p,m,n):
@@ -49,7 +50,17 @@ def wigner_calc(x,p):
     return np.real(W)
 
 
-print rho
+def wigner_calc_abs(x,p):
+    W=0
+    for m in xrange(0,NFock):
+        for n in xrange(0,NFock):
+            print m,n
+            W = W + rho[m][n]*W_mn(x,p,m,n)     
+            
+    return np.abs(np.real(W))
+
+def wignerint(x,p):
+    return wigner_calc_abs(x,p) - wigner_calc(x,p)
 
 W=wigner_calc(X,P)
 
@@ -59,8 +70,14 @@ plt.xlabel(r'$x$')
 plt.ylabel(r'$p$')
 #plt.title(r'$N=1$ Fock state')
 
-
-print integrate.nquad(wigner_calc,[[-6,6],[-6,6]])
+range= [-6,6]
+#print integrate.nquad(wignerint,[range,range])
+print integrate.nquad(wigner_calc,[range,range])
+#print integrate.dblquad(wignerint,-np.inf, np.inf,lambda x: -np.inf, lambda x: np.inf)
+Wabs=np.abs(W)
+int1 = np.trapz(Wabs-W)*dp
+int2=np.trapz(int1)*dx
+print int2
 
 plt.tight_layout()
 
@@ -76,9 +93,7 @@ ax1 = fig.add_subplot(111)
 wcmap = w_cmap(W,shift=0)
 
 plt1 = ax1.contourf(x, p, W, 100, cmap=wcmap)
-cb1 = fig.colorbar(plt1, ax=ax1)
+#cb1 = fig.colorbar(plt1, ax=ax1)
 
 
 plt.show()
-
-

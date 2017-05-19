@@ -22,7 +22,7 @@ rho_im = np.loadtxt('rho_im.dat')
 
 rho = rho_real + 1j*rho_im
 
-#rho=np.array([[1, 0],[0,0]])
+rho=np.array([[0, 0],[0,1]])
 NFock = len(rho)
 
 x=np.linspace(-3,3,500)
@@ -52,13 +52,13 @@ print rho
 
 W=wigner_calc(X,P)
 
-wcmap=w_cmap(W,shift=0)
+wcmap=w_cmap(W,shift=-1e-2)
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 surf = ax.plot_surface(X, P, np.real(W),cmap=wcmap)
 plt.tight_layout()
 
-fig.colorbar(surf, shrink=0.7)
+#fig.colorbar(surf, shrink=0.7)
 
 plt.xlabel(r'$x$')
 plt.ylabel(r'$p$')
