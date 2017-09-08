@@ -1,0 +1,99 @@
+MODULE quad3d_qgaus_mod
+  USE nrtype
+  PRIVATE
+  Hide all names from the outside,
+  PUBLIC quad3d_qgaus
+  except
+  quad3d
+  itself.
+  REAL(SP) :: xsav,ysav
+  INTERFACE
+     User-supplied functions.
+     FUNCTION func(x,y,z)
+       The three-dimensional function to be integrated.
+         USE nrtype
+         REAL(SP), INTENT(IN) :: x,y
+         REAL(SP), DIMENSION(:), INTENT(IN) :: z
+         REAL(SP), DIMENSION(size(z)) :: func
+       END FUNCTION to
+       FUNCTION y1(x)
+         USE nrtype
+         REAL(SP), INTENT(IN) :: x
+         REAL(SP) :: y1
+       END FUNCTION y1
+       FUNCTION y2(x)
+         USE nrtype
+         REAL(SP), INTENT(IN) :: x
+         REAL(SP) :: y2
+       END FUNCTION y2
+       FUNCTION z1(x,y)
+         USE nrtype
+         REAL(SP), INTENT(IN) :: x,y
+         REAL(SP) :: z1
+       END FUNCTION z1
+       FUNCTION z2(x,y)
+         USE nrtype
+         REAL(SP), INTENT(IN) :: x,y
+         REAL(SP) :: z2
+       END FUNCTION z2
+    END INTERFACE
+
+
+    !The routine quad3d qgaus returns as ss the integral of a user-supplied function func over a three-dimensional region specified by the limits x1 , x2 , and by the user-supplied functions y1 , y2 , z1 ,and z2 , as defined in (4.6.2). Integration is performed by calling qgaus recursively.
+
+  CONTAINS
+    FUNCTION h(x)
+      This is
+      H
+      of eq. (4.6.5).
+      REAL(SP), DIMENSION(:), INTENT(IN) :: x
+      REAL(SP), DIMENSION(size(x)) :: h
+      INTEGER(I4B) :: i
+      do i=1,size(x)
+         xsav=x(i)
+         h(i)=qgaus(g,y1(xsav),y2(xsav))
+      end do
+    END FUNCTION h
+    FUNCTION g(y)
+      This is
+      G
+      of eq. (4.6.4).
+      REAL(SP), DIMENSION(:), INTENT(IN) :: y
+      REAL(SP), DIMENSION(size(y)) :: g
+      INTEGER(I4B) :: j
+      do j=1,size(y)
+         ysav=y(j)
+         g(j)=qgaus(f,z1(xsav,ysav),z2(xsav,ysav))
+      end do
+    END FUNCTION g
+    FUNCTION f(z) The integrand f ( x,y,z ) evaluated at fixed x and y .
+      REAL(SP), DIMENSION(:), INTENT(IN) :: z
+      REAL(SP), DIMENSION(size(z)) :: f
+      f=func(xsav,ysav,z)
+    END FUNCTION f
+    RECURSIVE FUNCTION qgaus(func,a,b)
+      REAL(SP), INTENT(IN) :: a,b
+      REAL(SP) :: qgaus
+      INTERFACE
+         FUNCTION func(x)
+           USE nrtype
+           REAL(SP), DIMENSION(:), INTENT(IN) :: x
+           REAL(SP), DIMENSION(size(x)) :: func
+         END FUNCTION func
+      END INTERFACE
+      REAL(SP) :: xm,xr
+      REAL(SP), DIMENSION(5) :: dx, w = (/ 0.2955242247_sp,0.2692667193_sp,&
+           0.2190863625_sp,0.1494513491_sp,0.0666713443_sp /),&
+           x = (/ 0.1488743389_sp,0.4333953941_sp,0.6794095682_sp,&
+           0.8650633666_sp,0.9739065285_sp /)
+      xm=0.5_sp*(b+a)
+      xr=0.5_sp*(b-a)
+      dx(:)=xr*x(:)
+      qgaus=xr*sum(w(:)*(func(xm+dx)+func(xm-dx)))
+    END FUNCTION qgaus
+    SUBROUTINE quad3d_qgaus(x1,x2,ss)
+      REAL(SP), INTENT(IN) :: x1,x2
+      REAL(SP), INTENT(OUT) :: ss
+      ss=qgaus(h,x1,x2)
+    END SUBROUTINE quad3d_qgaus
+  END MODULE quad3d_qgaus_mod
