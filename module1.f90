@@ -216,21 +216,21 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
 
   end subroutine homodyne_detection
 
-   subroutine reconstruct_state(nruns,ntrajs,dt,rhozero,c,cdagger,H,gamma,t_start,mflag,&
-&channels, rho_im_filename, rho_re_filename)
+   subroutine reconstruct_state(nruns,nangles,ntrajs,dt,rhozero,c,cdagger,H,gamma,t_start,mflag,&
+&channels, rho_im_filename, rho_re_filename,shift_current,NFock)
 
     use omp_lib
     use, intrinsic :: iso_fortran_env, only : stdout=>output_unit
     use hermite, only: evalHermitePoly
 
     character(len=32), intent(in) :: rho_im_filename, rho_re_filename
-    integer, intent(in) :: nruns,ntrajs,channels
-    logical, intent(in) :: mflag ! if true, use milstein scheme
+    integer, intent(in) :: nruns,ntrajs,channels, nangles,NFock
+    logical, intent(in) :: shift_current, mflag ! if true, use milstein scheme
     real(dp), intent(in) :: dt, gamma,t_start
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
 
     character(len=*), parameter :: carriage_return =  char(13), newline=char(10)
-    integer :: k, p, q,maxlik_count, NFock=6, Nbins=100, nangles=10
+    integer :: k, p, q,maxlik_count, Nbins=100
 
     real(dp) :: t_end, dx, L=5, dtheta, theta
     real(dp), allocatable :: current_store(:,:),current(:,:)
@@ -239,7 +239,6 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
     integer, allocatable :: bins(:,:)
     complex(dp), allocatable :: proj(:,:), rho(:,:), rho_reconst(:,:), tmp_reconst(:,:),&
 &R(:,:)
-
     allocate(bins(nangles,Nbins),rho(2,2),rho_reconst(NFock,NFock),&
 &tmp_reconst(NFock,NFock),R(NFock,NFock),current(ntrajs,nangles),proj(NFock,NFock))
 
@@ -255,7 +254,7 @@ pure  function tomography_projector(j,theta,dx,NFock,L) result(y)
        dtheta=0 
     end if
     
-    write(stdout,*) 'Time to integrate: ', t_end-t_start
+    write(stdout,*) 'Time to integrate: ', t_end, t_start,t_end-t_start
 
  open(unit=7, file='test.dat', action="write")
 
@@ -273,7 +272,7 @@ ompstart = omp_get_wtime()
        !$OMP PARALLEL DO private(k,q) schedule(static)
        do k=1,ntrajs
 
-          current(k,p) = integrate_current(nruns,rhozero,gamma,c,cdagger,t_end,t_start,H,dt,theta,mflag,k,channels)
+          current(k,p) = integrate_current(nruns,rhozero,gamma,c,cdagger,t_end,t_start,H,dt,theta,mflag,k,channels,shift_current)
           write(stdout,"(2a,i4,$)") carriage_return,"Integrating current. Trajectory: ", k
 
           do q=1,Nbins ! bin current data
@@ -303,7 +302,7 @@ ompstart = omp_get_wtime()
     tmp_reconst=0
     R=0
     maxlik_count = 0
-    do while (.true.)!(maxlik_count .lt. 3) !(.true.)
+    do while (maxlik_count .lt. 4000) !(.true.)
        do q=1,Nbins
           do p=1,nangles
               theta=(p-1)*dtheta
@@ -316,9 +315,9 @@ ompstart = omp_get_wtime()
        tmp_reconst = tmp_reconst/trace(tmp_reconst)
        diff = frobenius_diff(rho_reconst,tmp_reconst)
        !print *, frobenius_diff(rho_reconst,tmp_reconst)
-       if (diff .lt. epsilon) then
-          exit
-       end if
+     !  if (diff .lt. epsilon) then
+     !     exit
+     !  end if
        rho_reconst = tmp_reconst
        maxlik_count = maxlik_count +1
        write(8,'(I10,A1,F22.15)') maxlik_count, char(9), diff
@@ -355,8 +354,8 @@ close(10)
  end subroutine reconstruct_state
 
 
- function integrate_current(nruns,rhozero,gamma,c,cdagger,t_end,t_start,H,dt,theta,mflag,seed,channels) result(y)
-    logical, intent(in) :: mflag ! if true, use milstein scheme
+ function integrate_current(nruns,rhozero,gamma,c,cdagger,t_end,t_start,H,dt,theta,mflag,seed,channels,shift_current) result(y)
+    logical, intent(in) :: shift_current, mflag ! if true, use milstein scheme
     integer, intent(in) :: nruns,seed,channels
     real(dp), intent(in) :: dt, gamma,t_end,t_start,theta
     complex(dp), intent(in) :: rhozero(:,:),c(:,:),cdagger(:,:),H(:,:)
@@ -382,10 +381,10 @@ close(10)
 
        dW = r8_normal_01(trueseed)*sqrt(dt)
 
-       if (t .ge.10) then ! start integrating current after time
+       if (t .ge. t_start) then ! start integrating current after time
 
           current = current + (sqrt(const)*trace(matmul(cdagger*exp(i*theta)+&
-               & c*exp(-i*theta),rho))*dt + dW)/sqrt(2._dp*(t_end-t_start))!*envelope(gamma,t_start,t_end,t,channels)!/sqrt(t_end-t_start)
+               & c*exp(-i*theta),rho))*dt + dW)/sqrt(2._dp*(t_end-t_start))!*envelope(gamma,t_start,t_end,t,channels)!
 
        end if 
 
@@ -401,8 +400,12 @@ close(10)
        end if !  EM or Milstein
        t = t + dt
     end do ! nruns
-    y=current !+5._dp*cos(theta)*sqrt(2._dp*(t_end-t_start))
- 
+    
+    if (shift_current) then
+    y=current +Omega*cos(theta)*sqrt(2._dp*(t_end-t_start))
+ else
+       y = current
+    endif
 
   end function integrate_current
 
@@ -418,15 +421,10 @@ close(10)
        const = 0.5_dp*gamma
     end if
 
-    ! Normalization factor
-  !  N = sqrt(gamma/(1._dp-exp(-gamma*t_end)))
-
-   ! y = N*exp(-0.5_dp*gamma*t)
-    gamma1=gamma!0.5
-
-    !N = sqrt(gamma1/(exp(-gamma1*t_start) - exp(-gamma1*t_end)))
-    N= sqrt(gamma1/(1._dp-exp(-gamma1*(t_end-t_start))))
-    y = N*exp(-0.5_dp*gamma1*(t-t_start))
+    !const=5
+ ! Normalization factor, below is filter for 1-photon
+    N = sqrt(const/(1._dp-exp(-const*(t_end-t_start))))
+    y = N*exp(-0.5_dp*const*(t-t_start))
   end function envelope
 
 

@@ -10,7 +10,6 @@ from scipy.misc import factorial
 from scipy.special import eval_genlaguerre as L
 from scipy.special import eval_laguerre as lag
 from scipy import integrate
-import sympy.mpmath as mp
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import LinearLocator, FormatStrFormatter
 from qutip import *
@@ -18,12 +17,12 @@ from qutip import *
 from wigner_cmap import w_cmap
 
 
-rho_real = np.loadtxt('testre')
-rho_im = np.loadtxt('testim')
+rho_real = np.loadtxt('tstre')
+rho_im = np.loadtxt('tstim')
 
 rho = rho_real + 1j*rho_im
 
-rho=np.array([[0, 0],[0,1]])
+rho=np.array([[1, 0],[0,0]])
 NFock = len(rho)
 
 x=np.linspace(-3,3,500)
@@ -54,7 +53,7 @@ def wigner_calc_abs(x,p):
     W=0
     for m in xrange(0,NFock):
         for n in xrange(0,NFock):
-            print m,n
+           
             W = W + rho[m][n]*W_mn(x,p,m,n)     
             
     return np.abs(np.real(W))
@@ -72,18 +71,19 @@ plt.ylabel(r'$p$')
 
 range= [-6,6]
 #print integrate.nquad(wignerint,[range,range])
-print integrate.nquad(wigner_calc,[range,range])
-#print integrate.dblquad(wignerint,-np.inf, np.inf,lambda x: -np.inf, lambda x: np.inf)
-Wabs=np.abs(W)
-int1 = np.trapz(Wabs-W)*dp
-int2=np.trapz(int1)*dx
-print int2
+#print integrate.nquad(wigner_calc,[range,range])
+#print integrate.dblquad(wigner_calc,-np.inf, np.inf,lambda x: -np.inf, lambda x: np.inf)
+#Wabs=np.abs(W)
+#int1 = np.trapz(Wabs-W)*dp
+#int2=np.trapz(int1)*dx
+#print int2
 
 plt.tight_layout()
 
 rhoq = Qobj(rho)
 
-
+print rho
+print wigner_calc(0,0)
 #xvec = np.linspace(-5,5,200)
 #W = wigner(rhoq, x, p)
 

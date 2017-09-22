@@ -11,12 +11,13 @@ program main
   implicit none
 
   complex(dp), dimension(2,2) :: sigma_z, sigma_plus, sigma_minus, rhozero, H, H_traj
-  complex(dp) :: i = complex(0,1),rhovec_zero(4)
+  complex(dp) :: i = complex(0,1)
  
   real(dp), parameter ::  dt = 1e-3
-  real(dp) ::  gamma, Omega, w, start, finish, ompstart, ompend, const, T, t_start = 10
+  real(dp) ::  gamma, Omega, w, start, finish, ompstart, ompend, const, T, t_start
  
-  integer ::  channels, nruns, ntrajs = 500
+  integer ::  channels, nruns, ntrajs, nangles,NFock
+  logical :: shift_current
 logical :: milstein = .true.
 !logical :: milstein = .false.
 
@@ -25,8 +26,8 @@ CHARACTER(len=32) :: arg_time, arg_drive, rho_im_filename, rho_re_filename
   sigma_plus = reshape ( (/ 0,0,1,0/),(/2,2/) )
   sigma_minus = reshape ( (/ 0,1,0,0/),(/2,2/) )
   sigma_z = reshape ( (/ 1,0,0,-1/),(/2,2/) )
-  rhozero = reshape ( (/0,0,0,1/),(/2,2/) )
-  rhovec_zero = (/0,0,0,1/)
+  rhozero = reshape ( (/1,0,0,0/),(/2,2/) )
+
   
   call get_command_argument(1,arg_time)
   read(arg_time,'(F4.4)') T
@@ -37,13 +38,18 @@ CHARACTER(len=32) :: arg_time, arg_drive, rho_im_filename, rho_re_filename
   call get_command_argument(4,rho_re_filename)
  !  'rho_im.dat'
  ! 'rho_re.dat'
- 
+
+ shift_current = .true.
+  
+  t_start = 10
   nruns= int((t_start+T)*1000)
 print *, rho_im_filename, rho_re_filename, T, Omega, nruns
    gamma = 1
-   !Omega = 0.5
+   ntrajs = 1000
    w = 1
    channels = 1
+   nangles=30
+   NFock = 7
 
    if (channels == 1) then
        const = gamma
@@ -51,7 +57,6 @@ print *, rho_im_filename, rho_re_filename, T, Omega, nruns
        const = 0.5_dp*gamma
     end if
 
-   
 
    ! resonant fluorescence
    H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 + sqrt(const)*Omega*(sigma_plus + sigma_minus)/2
@@ -70,8 +75,8 @@ print '("Time = ",f10.3," seconds for trajectory solution.")',finish-start
 
 ompstart = omp_get_wtime()
  
-call reconstruct_state(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,H_traj,gamma,&
-&t_start,milstein,channels, rho_im_filename, rho_re_filename)
+call reconstruct_state(nruns,nangles,ntrajs,dt,rhozero,sigma_minus,sigma_plus,H_traj,gamma,&
+&t_start,milstein,channels, rho_im_filename, rho_re_filename,shift_current,NFock)
 
 ompend = omp_get_wtime()
 print *, char(10)

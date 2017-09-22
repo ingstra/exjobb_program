@@ -1,0 +1,8 @@
+
+import numpy as np
+x=np.linspace(-6,6,10)
+y=x
+
+
+X,Y = np.meshgrid(x,y)
+print(np.transpose(Y))

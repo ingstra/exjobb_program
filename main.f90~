@@ -1,52 +1,89 @@
 
 program main
+  
+  use omp_lib
+  use module1, only: dp, print_matrix, trace, dagger, superH, superG,kronecker, expm,&
+& liouvillian, delta_rho, r8_normal_01, delta_rho_homodyne, superD, homodyne_detection,&
+& integrate_current, exact_solution, factorial,reconstruct_state,correlations
 
-  use module1, only: dp, print_matrix, trace, dagger, superH, identity_matrix, superG
-
+ 
+ 
   implicit none
 
-  complex(dp), dimension(2,2) :: sigma_z, sigma_plus, sigma_minus, tm, rho, H
-  complex(dp) :: i = complex(0,1)
-  real(dp), allocatable :: store(:)
-  real(dp), parameter :: Omega = 1, delta_t = 1e-4
-  real(dp) :: random, time
-  integer, allocatable :: seed(:)
-  integer, parameter :: file_unit = 1
-  integer :: values(8), k, j, nruns = 10000
+  complex(dp), dimension(2,2) :: sigma_z, sigma_plus, sigma_minus, rhozero, H, H_traj
+  complex(dp) :: i = complex(0,1),rhovec_zero(4)
+ 
+  real(dp), parameter ::  dt = 1e-3
+  real(dp) ::  gamma, Omega, w, start, finish, ompstart, ompend, const, T, t_start = 10
+ 
+  integer ::  channels, nruns, ntrajs = 500
+logical :: milstein = .true.
+!logical :: milstein = .false.
 
-  character(len=15) :: file_name = 'testfil'
+CHARACTER(len=32) :: arg_time, arg_drive, rho_im_filename, rho_re_filename
+
+  sigma_plus = reshape ( (/ 0,0,1,0/),(/2,2/) )
+  sigma_minus = reshape ( (/ 0,1,0,0/),(/2,2/) )
+  sigma_z = reshape ( (/ 1,0,0,-1/),(/2,2/) )
+  rhozero = reshape ( (/1,0,0,0/),(/2,2/) )
+
   
-  allocate(store(nruns))
+  call get_command_argument(1,arg_time)
+  read(arg_time,'(F4.4)') T
+  call get_command_argument(2,arg_drive)
+  read(arg_drive,'(F3.3)') Omega
 
-  sigma_plus = reshape ( (/0,0,1,0/),(/2,2/) )
-  sigma_minus = reshape ( (/0,1,0,0/),(/2,2/) )
-  sigma_z = reshape ( (/1,0,0,-1/),(/2,2/) )
-  rho = reshape ( (/1,0,0,0/),(/2,2/) )
+  call get_command_argument(3,rho_im_filename)
+  call get_command_argument(4,rho_re_filename)
+ !  'rho_im.dat'
+ ! 'rho_re.dat'
+ 
+  nruns= int((t_start+T)*1000)
+print *, rho_im_filename, rho_re_filename, T, Omega, nruns
+   gamma = 1
+   !Omega = 0.5
+   w = 1
+   channels = 1
 
-  H = Omega*sigma_z/2
-  time = 0
+   if (channels == 1) then
+       const = gamma
+    else
+       const = 0.5_dp*gamma
+    end if
 
-  tm = reshape ( (/1,2,3,4/),(/2,2/) )
+   
 
-  !call print_matrix(superG(sigma_minus,rho))
-call date_and_time(VALUES=values)
+   ! resonant fluorescence
+   H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 + sqrt(const)*Omega*(sigma_plus + sigma_minus)/2
+  ! H =  - i*gamma*matmul(sigma_plus,sigma_minus)/2 -i*sqrt(const)*Omega*(sigma_plus-sigma_minus)
+  ! H_traj =  w*sigma_z/2 
 
-call random_seed(size=k)
-allocate(seed(k))
-seed(:) = values
-call random_seed(put=seed)
+ H_traj = -i*sqrt(const)*Omega*(sigma_plus-sigma_minus) !Omega*(sigma_plus + sigma_minus)/2
 
-!do j=1,nruns
-!   call random_number(random)
-!   if (random < dt ) then
-      
-!end do
+call cpu_time(start)
 
-open(unit=file_unit, file=file_name, action="write")
-write(file_unit,'(E22.15)') store
-close(file_unit)
+!call homodyne_detection(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,gamma,'traj1.dat',H_traj,milstein)
+
+call cpu_time(finish)
+
+print '("Time = ",f10.3," seconds for trajectory solution.")',finish-start
+
+ompstart = omp_get_wtime()
+ 
+call reconstruct_state(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,H_traj,gamma,&
+&t_start,milstein,channels, rho_im_filename, rho_re_filename)
+
+ompend = omp_get_wtime()
+print *, char(10)
+print '("Time = ",f10.3," seconds for reconstruction.")',ompend-ompstart
 
 
-   !  write (*,*) 'Hello, world!'   ! This is an inline comment
+call cpu_time(start)
+!call correlations(nruns,sigma_minus,sigma_plus,dt,'g2.dat',t_start,rhovec_zero, H)
+!call exact_solution(nruns,sigma_minus,sigma_plus,dt,'exact.dat',t_start,rhovec_zero, H)
+
+call cpu_time(finish)
+ print '("Time = ",f6.3," seconds for exact solution.")',finish-start
+
 end program main
 

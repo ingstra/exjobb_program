@@ -1,0 +1,7 @@
+x = linspace(-1000,1000,10000);
+[X,P]=meshgrid(x,x);
+res=cos(sqrt(X.^2 + P.^2));
+
+Y=fft(res);
+surf(X,P,abs(fftshift(Y)))
+

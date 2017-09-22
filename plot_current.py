@@ -5,7 +5,7 @@ import matplotlib.mlab as mlab
 import numpy as np
 from scipy.stats import norm
 from scipy.misc import factorial
-import sympy.mpmath as mp
+import mpmath as mp
 
 current = np.loadtxt('current.dat')
 
@@ -24,13 +24,13 @@ area = sum(np.diff(bins)*values)
 
 mufit, stdfit = norm.fit(current)
 #print 'fitted mean: ',mufit #, 'calculated mean: '
-print 'fitted var: ',stdfit**2 ,'calculated var: ',variance
+print('fitted var: ',stdfit**2 ,'calculated var: ',variance)
 
 
 range = 5
 x= np.linspace(-range,range,100)
 
-n=0
+n=1
 h_poly = np.frompyfunc(mp.hermite,2,1)
 
 const = 1/(np.sqrt(2**n * factorial(n)) * (2*np.pi)**0.25 )
@@ -39,11 +39,11 @@ tot  = (rest*h_poly(n,x/np.sqrt(2)))**2
 plt.plot(x,tot,'r-')
 
 #print np.trapz(tot,x)
-sigma = 0.66
-s = np.random.normal(0, sigma, 1000)
-plt.hist(s,bins=50,normed=1)
+#sigma = 0.66
+#s = np.random.normal(0, sigma, 1000)
+#plt.hist(s,bins=50,normed=1)
 
-
+plt.xlim([-4,4])
 #plt.plot(traj[:,0],traj[:,1])
 #plt.plot(exact[:,0],exact[:,1],'r--')
 

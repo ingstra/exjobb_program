@@ -117,7 +117,7 @@ pure function wavefunction(n,x,arraysize) result(y)
    end do
 
    test2=integrate(y,test)
-   print *, test2
+ 
    
   end subroutine test_integrate
     
@@ -155,10 +155,10 @@ end function
 
   end subroutine exact_solution
 
-  subroutine correlations(nruns, rhozero,c, cdagger, dt ,filename,t_start, rhovec_zero, H)
+  subroutine correlations(nruns, c, cdagger, dt ,filename,t_start, rhovec_zero, H)
     integer, intent(in) :: nruns
     real(dp), intent(in) :: dt,t_start
-    complex(dp), intent(in) :: rhovec_zero(:),c(:,:),cdagger(:,:),H(:,:),rhozero(:,:)
+    complex(dp), intent(in) :: rhovec_zero(:),c(:,:),cdagger(:,:),H(:,:)
     character(len=*), intent(in) :: filename
 
     complex(dp) :: rho(2,2), rhovec(4),P_zero(4,4), P(4,4), tmp(4,4),tmpvec(4),id(2,2),tmp2(2,2)
@@ -170,6 +170,12 @@ end function
     
     open(unit=2, file=filename, action="write")
     do j=1,nruns
+
+       rhovec = matmul( expm(j*dt,liouvillian(c,H)), rhovec_zero)
+       rho(1,1) = rhovec(1)
+       rho(2,1) = rhovec(2)
+       rho(1,2) = rhovec(3)
+       rho(2,2) = rhovec(4)
        
        if (j*dt .gt. t_start) then
           !rho = reshape ( (/ 0.5_dp,0._dp,0._dp,0.5_dp/),(/2,2/) )
@@ -177,86 +183,95 @@ end function
           g1 = real(trace(matmul(cdagger,c)*rho))
 
           tmpvec = matmul(kronecker(conjg(c),c),rhovec)
+        
           tmpvec = matmul(P,tmpvec)
+          !print *, real(tmpvec)
           tmp2(1,1) = tmpvec(1)
           tmp2(2,1) = tmpvec(2)
           tmp2(1,2) = tmpvec(3)
           tmp2(2,2) = tmpvec(4)
+
+          !
+          !call print_matrix_real(real(tmp2))
+         ! print *, 
+       
           G2 = real(trace(matmul(cdagger,c)*tmp2))       
           g2_norm = G2/g1**2
+          !print *, G2_norm
           write(2,'(E22.7,A1,E22.7)') j*dt-t_start, char(9), g2_norm
        endif
 
-       rhovec = matmul( expm(j*dt,liouvillian(c,H)), rhovec_zero)
-       rho(1,1) = rhovec(1)
-       rho(2,1) = rhovec(2)
-       rho(1,2) = rhovec(3)
-       rho(2,2) = rhovec(4)
+       
 
     end do
+   
     close(2)
-call print_matrix_real(real(rho))
+!call print_matrix_real(real(rho))
      end subroutine correlations
 
-  subroutine wigner(nruns,gamma, c, dt ,filename, rhovec_zero, H,tau,time,x,p,W)
-    integer, intent(in) :: nruns
-    real(dp), intent(in) :: dt,gamma,tau,time,x,p
+  subroutine wigner(gamma, c, rhovec_zero, H,tau,time,x,p,W)
+    real(dp), intent(in) :: gamma,tau,time,x,p
     complex(dp), intent(in) :: rhovec_zero(:),c(:,:),H(:,:)
-    character(len=*), intent(in) :: filename
     real(dp), intent(out) :: W
 
-    complex(dp) :: rho(2,2), rhovec_t(4)
-    real(dp) :: G1, G2, g2_norm,tr,lim
-    integer ::n
-    real(dp), allocatable :: lambda_1(:), lambda_2(:),result(:,:)
+    real(dp) :: lim
+    integer ::n,i,j
+    real(dp), allocatable :: lambda_1(:), lambda_2(:),result(:,:),tmp(:)
 
-    n=1000
-    allocate(lambda_1(n),lambda_2(n),result(n,n))
-    lim = 6.0
+   
+    n=140
+    allocate(lambda_1(n),lambda_2(n),result(n,n),tmp(n))
+    lim =5
     
     call linspace(-lim,lim,n,lambda_1)
     call linspace(-lim,lim,n,lambda_2)
-   
-    open(unit=2, file=filename, action="write")
-
     
-    result=integrand(c,rhovec_zero,gamma,H,tau,time,lambda_1(1), lambda_2(1),x,p) 
+    !open(unit=2, file=filename, action="write")
+
+    do i=1,n
+     !  print *,i
+       do j=1,n
+          result(i,j)=integrand(c,rhovec_zero,gamma,H,tau,time,lambda_1(i), lambda_2(j),x,p)
+       end do
+    end do
+    
+    do i = 1,n
+      tmp(i)=integrate(lambda_1,result(i,:))
+   end do
+
+   W=integrate(lambda_2,tmp)
    
          
       !    write(2,'(E22.7,A1,E22.7)') j*dt-t_start, char(9), g2_norm
     
 
 
-    close(2)
+    !close(2)
   end subroutine wigner
-
+  
   function integrand(c,rhovec_zero,gamma, H,tau,time,lambda_1, lambda_2,x,p) result(y)
     real(dp), intent(in) :: lambda_1, lambda_2,x,p,tau,time,gamma
     complex(dp), intent(in) :: rhovec_zero(:),c(:,:),H(:,:)
-    real(dp) :: tr,y,e
-    
+    real(dp) :: tr,y
+    complex(dp) :: i = complex(0,1),e
     complex(dp) :: rhovec_t(4),L(4,4),tmp(4,4),tst(4),tr_matrix(2,2)
     L = identity_matrix(4) 
-    
 
-     
     rhovec_t = matmul( expm(time,liouvillian(c,H)), rhovec_zero)
 
-     tmp = expm(tau,liouvillian(c,H) - L*(lambda_1**2+lambda_2**2)/2._dp &
-          & + superM(gamma,c,lambda_1,lambda_2))
+    tmp = expm(tau,liouvillian(c,H) - L*(lambda_1**2+lambda_2**2)/2._dp &
+         & + superM(gamma,c,lambda_1,lambda_2))
 
-     tst = matmul(tmp,rhovec_t)
-     
-      tr_matrix(1,1) = tst(1)
-       tr_matrix(2,1) = tst(2)
-       tr_matrix(1,2) = tst(3)
-       tr_matrix(2,2) = tst(4)
+    tst = matmul(tmp,rhovec_t)
+    tr_matrix(1,1) = tst(1)
+    tr_matrix(2,1) = tst(2)
+    tr_matrix(1,2) = tst(3)
+    tr_matrix(2,2) = tst(4)
 
-       tr = trace(tr_matrix)
-     
-        e=exp(2._dp*i*(p*lambda_1 - x*lambda_2))   
-        y = tr*e/pi**2
-    
+    tr = trace(tr_matrix)
+
+    e=exp(2._dp*i*(p*lambda_1 - x*lambda_2))   
+    y = real(tr*e/pi**2)
   end function integrand
 
      
@@ -393,7 +408,7 @@ end subroutine
     n = size(c,1)
     allocate(y(n**2,n**2))
 
-    identity = reshape ( (/1,0,0,1/),(/2,2/) )
+    identity = reshape ( (/1._dp,0._dp,0._dp,1._dp/),(/2,2/) )
 
     y = -i*kronecker(identity,H_eff) + i*kronecker(conjg(H_eff),identity) +&
          &kronecker(conjg(c),c)
@@ -403,7 +418,7 @@ end subroutine
   function kronecker(A,B) result(y)
     complex(dp), dimension (:,:), intent(in)  :: A, B
     complex(dp), dimension (:,:), allocatable :: y
-   integer :: i = 0, j = 0, m = 0, n = 0, p = 0, q = 0
+   integer :: i = 0, j = 0
 
    allocate(y(size(A,1)*size(B,1),size(A,2)*size(B,2)))
    y=0
@@ -606,5 +621,20 @@ end function kronecker
     iexph = iput
 
   END subroutine ZGPADM
+
+  subroutine meshgrid(xgv, ygv, X, Y)
+  implicit none
+  real(dp),intent(in)   :: xgv(:), ygv(:)
+  real(dp),intent(out)  :: X(:,:), Y(:,:)
+  integer           :: sX, sY
+
+  sX = size(xgv) ; sY = size(ygv) ; 
+
+ 
+    X = spread( xgv, 2, sY )
+ 
+    Y= spread( ygv, 1, sX)
+
+end subroutine
 
 end module module1

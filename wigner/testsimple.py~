@@ -1,0 +1,64 @@
+import numpy as np
+from numpy import kron
+from numpy import sqrt,pi
+from scipy.linalg import expm
+from scipy import integrate
+import scipy as sp
+import time
+import functools
+import itertools
+import matplotlib.pylab as plt
+from wigner_cmap import w_cmap
+from matplotlib import cm
+from mpl_toolkits.mplot3d import Axes3D
+
+start_time = time.time()
+sigma_minus = np.matrix('0,0;1,0')
+sigma_plus = np.matrix([[0,1],[0,0]])
+rho0 = np.matrix([[1,0],[0,0]])
+rho_vec0=np.transpose(rho0).A1
+
+gamma=1
+Omega=0.5
+dt=1e-3
+
+a=sigma_minus
+adagger=sigma_plus
+  
+H =  -1j*np.sqrt(gamma)*Omega*(sigma_plus-sigma_minus) - 1j*gamma*np.matmul(sigma_plus,sigma_minus)/2
+
+I = np.eye(2)
+rho=np.array([[0, 0],[0,1]])
+
+n=100
+x=np.linspace(-3,3,n)
+p=x
+dx=x[1]-x[0]
+dp=dx
+
+X, P = np.meshgrid(x,p)
+tau=3
+
+def wigner(x,p):
+    return (2/(pi*tau))*np.trace(expm(-tau/2*np.absolute(tau*sigma_minus-x*I-1j*p*I)**2)*rho)
+
+awesome_wigner=np.vectorize(wigner)
+W=awesome_wigner(X,P)
+
+lim=6
+#print integrate.nquad(awesome_wigner,[lim,lim]) 
+
+int1 = np.trapz(W)*dp
+int2=np.trapz(int1)*dx
+print int2
+
+
+#wcmap = w_cmap(W,shift=0)
+fig = plt.figure()
+ax1 = fig.add_subplot(111, projection='3d')
+surf = ax1.plot_surface(X, P, np.real(W),cmap=cm.coolwarm)
+
+
+print time.time() - start_time,' seconds to run.'
+
+plt.show()

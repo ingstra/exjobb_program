@@ -24,15 +24,15 @@ logical :: milstein = .true.
   sigma_plus = reshape ( (/ 0,0,1,0/),(/2,2/) )
   sigma_minus = reshape ( (/ 0,1,0,0/),(/2,2/) )
   sigma_z = reshape ( (/ 1,0,0,-1/),(/2,2/) )
-  rhozero = reshape ( (/0,0,0,1/),(/2,2/) )
-  rhovec_zero = (/0,0,0,1/)
+  rhozero = reshape ( (/1,0,0,0/),(/2,2/) )
+  rhovec_zero = (/1,0,0,0/)
   
-  nruns = 15000
-  ntrajs = 1000
-  nangles= 20
+  nruns = 20000
+  ntrajs = 100
+  nangles= 1
 
    gamma = 1
-   Omega = 0.5
+   Omega = 0
    w = 1
    channels = 1
    shift_current = .false.
@@ -53,7 +53,7 @@ logical :: milstein = .true.
 
 call cpu_time(start)
 
-!call homodyne_detection(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,gamma,'traj1.dat',H_traj,milstein,channels)
+call homodyne_detection(nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,gamma,'traj1.dat',H_traj,milstein,channels)
 
 call cpu_time(finish)
 
@@ -61,8 +61,8 @@ print '("Time = ",f10.3," seconds for trajectory solution.")',finish-start
 
 ompstart = omp_get_wtime()
  
-call reconstruct_state(Omega,nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,H_traj,gamma,&
-&t_start,milstein,channels, 'rho_im.dat', 'rho_re_.dat',nangles,shift_current)
+!call reconstruct_state(Omega,nruns,ntrajs,dt,rhozero,sigma_minus,sigma_plus,H_traj,gamma,&
+!&t_start,milstein,channels, 'rho_im.dat', 'rho_re_.dat',nangles,shift_current)
 
 ompend = omp_get_wtime()
 print *, char(10)
@@ -71,7 +71,7 @@ print '("Time = ",f10.3," seconds for reconstruction.")',ompend-ompstart
 
 call cpu_time(start)
 !call correlations(nruns,rhozero,sigma_minus,sigma_plus,dt,'g2_Omega0_5.dat',t_start,rhovec_zero, H)
-!call exact_solution(nruns,sigma_minus,sigma_plus,dt,'exact.dat',t_start,rhovec_zero, H)
+call exact_solution(nruns,sigma_minus,sigma_plus,dt,'exact.dat',t_start,rhovec_zero, H)
 
 call cpu_time(finish)
  print '("Time = ",f6.3," seconds for exact solution.")',finish-start
